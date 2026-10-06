@@ -8,8 +8,8 @@ allprojects {
     }
     // 强制所有 Kotlin 模块使用 Java 11
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions {
-            jvmTarget = "11"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
     }
     // 禁用 JVM-target 验证
@@ -28,8 +28,8 @@ subprojects {
     
     // 强制所有子项目使用 Java 11
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions {
-            jvmTarget = "11"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
         }
     }
     tasks.withType<JavaCompile> {

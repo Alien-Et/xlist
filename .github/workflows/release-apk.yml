@@ -1,14 +1,16 @@
-name: 打包并发布
+name: 构建并发布 APK
 
 # 显式设置所需权限
 permissions:
-  contents: write  # 允许读写仓库内容（包括提交、推送和创建 Release）
+  contents: write  # 允许创建 tag 和 Release
 
 on:
-  workflow_dispatch: # 手动触发工作流
+  push:
+    branches: [main]
+  workflow_dispatch: # 也可手动触发
 
 jobs:
-  rebuild-android:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,165 +18,98 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
-      # 设置 Flutter 环境
+      # 设置 JDK 17（Flutter/AGP 8.11 需要）
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 设置 Flutter 环境（与本地验证版本一致）
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.32.5'
+          flutter-version: '3.47.5'
           channel: 'stable'
+          cache: true
 
-      # 调试：列出项目文件
-      - name: Debug - List project files
-        run: |
-          echo "Listing project files:"
-          ls -la
-          echo "Checking pubspec.yaml:"
-          ls -l pubspec.yaml || echo "pubspec.yaml not found"
-        working-directory: ./
-
-      # 缓存 Flutter 依赖
-      - name: Cache Flutter dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.pub-cache
-          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.lock') }}
-          restore-keys: ${{ runner.os }}-flutter-
-
-      # 获取 Flutter 依赖
+      # 获取依赖
       - name: Install dependencies
         run: flutter pub get
-        working-directory: ./
-        continue-on-error: true
 
-      # 清理并重新生成构建文件
-      - name: Clean and regenerate build files
+      # 生成 release 签名密钥（密钥密码优先取 Secrets，未配置时用 CI 默认值）
+      - name: Generate release keystore
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          flutter clean || echo "Flutter clean failed, continuing..."
-          flutter pub get
-        working-directory: ./
-        continue-on-error: true
+          PASS="${KEYSTORE_PASSWORD:-xlist-ci-2026}"
+          keytool -genkey -v \
+            -keystore "$RUNNER_TEMP/release-key.jks" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -alias xlist -storepass "$PASS" -keypass "$PASS" \
+            -dname "CN=XList, OU=Dev, O=XList, L=City, S=State, C=CN" 2>/dev/null
+          cat > keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release-key.jks
+          storePassword=$PASS
+          keyAlias=xlist
+          keyPassword=$PASS
+          EOF
+          echo "keystore generated (alias: xlist)"
 
-      # 生成递增版本标签
+      # 构建正式版 APK（release，已签名）
+      - name: Build release APK
+        run: flutter build apk --release
+
+      # 构建调试版 APK（debug）
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      # 生成递增的发布版本号（v1.0.0 → v1.0.1 → ...）
       - name: Generate incremental version tag
         id: version
         run: |
-          echo "Generating version tag..."
           LATEST_TAG=$(git tag -l 'v1.*' | sort -V | tail -n 1)
           if [ -z "$LATEST_TAG" ]; then
             NEW_TAG="v1.0.0"
           else
-            VERSION=$(echo $LATEST_TAG | sed 's/v1\.//')
-            MAJOR=1
-            MINOR=$(echo $VERSION | cut -d. -f1)
-            PATCH=$(echo $VERSION | cut -d. -f2)
-            if [ $PATCH -ge 9 ]; then
-              MINOR=$((MINOR + 1))
-              PATCH=0
-            else
-              PATCH=$((PATCH + 1))
-            fi
-            NEW_TAG="v1.$MINOR.$PATCH"
+            VERSION=$(echo "$LATEST_TAG" | sed 's/^v//')
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+            PATCH=$((PATCH + 1))
+            NEW_TAG="v$MAJOR.$MINOR.$PATCH"
           fi
-          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+          echo "NEW_TAG=$NEW_TAG" >> "$GITHUB_ENV"
           echo "Generated version: $NEW_TAG"
-        shell: bash
 
-      # 更新 pubspec.yaml 中的版本号
-      - name: Update pubspec.yaml version
-        run: |
-          VERSION=$(echo ${{ env.NEW_TAG }} | sed 's/v//')
-          PUBSPEC_FILE="pubspec.yaml"
-          if [ -f "$PUBSPEC_FILE" ]; then
-            sed -i "s/version: [0-9]\+\.[0-9]\+\.[0-9]\+\(+[0-9]\+\)\?/version: $VERSION/" "$PUBSPEC_FILE"
-            echo "Updated pubspec.yaml version to $VERSION"
-            cat $PUBSPEC_FILE
-          else
-            echo "Error: pubspec.yaml not found!"
-            exit 1
-          fi
-        working-directory: ./
-
-      # 检查是否提供密钥库并恢复
-      - name: Restore keystore if available
-        env:
-          HAS_KEYSTORE: ${{ secrets.KEYSTORE && secrets.KEYSTORE_KEY_ALIAS && secrets.KEYSTORE_PASSWORD && secrets.KEY_PASSWORD }}
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
-        run: |
-          echo "Restoring keystore..."
-          echo "${{ secrets.KEYSTORE }}" | base64 -d > android/app/keystore.jks
-          ls -l android/app/keystore.jks || echo "Failed to restore keystore"
-        working-directory: ./
-        continue-on-error: true
-
-      # 打包并签名 Android APK
-      - name: Build Android APK
-        env:
-          HAS_KEYSTORE: ${{ secrets.KEYSTORE && secrets.KEYSTORE_KEY_ALIAS && secrets.KEYSTORE_PASSWORD && secrets.KEY_PASSWORD }}
-        run: |
-          if [ "$HAS_KEYSTORE" = "true" ] && [ -f "android/app/keystore.jks" ]; then
-            echo "Building signed APK..."
-            flutter build apk --release \
-              --build-name=${{ env.NEW_TAG }} \
-              --build-number=$(( $(git rev-list --count HEAD) + 1000 )) \
-              --keystore-path=android/app/keystore.jks \
-              --keystore-key-alias=${{ secrets.KEYSTORE_KEY_ALIAS }} \
-              --keystore-password=${{ secrets.KEYSTORE_PASSWORD }} \
-              --key-password=${{ secrets.KEY_PASSWORD }}
-          else
-            echo "No keystore found or incomplete secrets, building unsigned APK..."
-            flutter build apk --release \
-              --build-name=${{ env.NEW_TAG }} \
-              --build-number=$(( $(git rev-list --count HEAD) + 1000 ))
-          fi
-        working-directory: ./
-
-      # 清理密钥库文件
-      - name: Clean up keystore
-        env:
-          HAS_KEYSTORE: ${{ secrets.KEYSTORE && secrets.KEYSTORE_KEY_ALIAS && secrets.KEYSTORE_PASSWORD && secrets.KEY_PASSWORD }}
-        if: ${{ env.HAS_KEYSTORE == 'true' }}
-        run: |
-          echozo "Cleaning up keystore..."
-          rm -f android/app/keystore.jks
-        working-directory: ./
-        continue-on-error: true
-
-      # 上传 APK 作为 artifact
-      - name: Upload APK artifact
+      # 上传两个 APK 作为 workflow artifact（可在 Actions 页面直接下载）
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 7
+          name: xlist-apks-${{ env.NEW_TAG }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
 
-      # 提交 pubspec.yaml 更改到仓库
-      - name: Commit and push changes
-        run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'actions@github.com'
-          git add pubspec.yaml
-          git commit -m "Update pubspec.yaml version to ${{ env.NEW_TAG }}" || echo "No changes to commit"
-          git push origin HEAD || echo "Push failed, continuing..."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      # 创建 GitHub Release 并上传 APK
+      # 创建 GitHub Release 并同时挂载两个 APK
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.NEW_TAG }}
           name: Release ${{ env.NEW_TAG }}
           body: |
-            Automated release of Flutter Android APK.
-            Signed: ${{ secrets.KEYSTORE && secrets.KEYSTORE_KEY_ALIAS && secrets.KEYSTORE_PASSWORD && secrets.KEY_PASSWORD }}
-            Generated from commit: ${{ github.sha }}
+            ## XList 自动构建发布
+
+            - **app-release.apk**：正式发布版（已签名，可直接安装）
+            - **app-debug.apk**：调试版（含调试日志，供排查问题）
+
+            来源提交：`${{ github.sha }}`
+            构建时间：${{ github.event.head_commit.timestamp }}
           draft: false
           prerelease: false
-          files: build/app/outputs/flutter-apk/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk

@@ -41,3 +41,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 密钥文件（CI 生成，切勿提交）
+keystore.properties
+*.jks
+*.keystore

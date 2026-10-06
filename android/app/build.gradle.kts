@@ -1,7 +1,8 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 buildscript {
-    val kotlin_version by extra("2.1.0")
+    val kotlin_version by extra("2.2.20")
     repositories {
         google()
         mavenCentral()
@@ -26,10 +27,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
     }
 
     defaultConfig {
@@ -73,8 +70,11 @@ android {
 
     buildTypes {
         release {
-            // 暂时禁用签名配置，用于测试构建
-            // signingConfig = signingConfigs.getByName("release")
+            // 存在 keystore.properties 时使用正式签名（CI/本地提供密钥），否则构建未签名 APK
+            val keystorePropertiesFile = rootProject.file("keystore.properties")
+            if (keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
@@ -85,6 +85,12 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
 }
 
 configurations.all {
