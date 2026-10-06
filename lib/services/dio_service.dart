@@ -75,20 +75,17 @@ class DioInterceptors extends Interceptor {
         }
       }
       // 如果已经有Authorization头，保持不变（比如WebDAV的Basic认证）
-    } catch (e) {
-      print('Error adding headers: $e');
+    } catch (_) {
+      // 忽略：读取 token 失败时按未登录处理
     }
     return super.onRequest(options, handler);
   }
 
   @override
   void onResponse(Response response, ResponseInterceptorHandler handler) {
-    // 只处理 JSON 响应，不处理 WebDAV 的 XML 响应
-    if (response.data == null) {
-      response.data = {'message': '您的网络不太好, 请刷新页面重试吧', 'code': -1};
-    }
-
-    // Next
+    // 注意：不在此处改写响应数据。
+    // WebDAV 的 DELETE/MOVE/COPY/MKCOL 等返回 204 时 data 为 null，
+    // 调用方均基于 statusCode 判断结果；改写 null 会误导下游逻辑。
     handler.next(response);
   }
 

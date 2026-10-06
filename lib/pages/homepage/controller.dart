@@ -61,10 +61,7 @@ class HomepageController extends GetxController {
 
   // 检查服务器是否配置
   bool get isServerConfigured {
-    bool configured = coreService != null && coreService!.currentServer.value != null;
-    if (coreService != null) {
-    }
-    return configured;
+    return coreService != null && coreService!.currentServer.value != null;
   }
 
   // 获取当前服务器
@@ -85,7 +82,6 @@ class HomepageController extends GetxController {
         if (coreService == null) {
           throw Exception('核心服务不可用');
         }
-      } else {
       }
 
       // 确保服务器配置已经加载
@@ -156,7 +152,8 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.addToFavorites(object);
-    } catch (e) {
+    } catch (_) {
+      // 收藏失败时静默处理
     }
   }
 
@@ -170,7 +167,8 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.addToRecent(object);
-    } catch (e) {
+    } catch (_) {
+      // 记录失败时静默处理
     }
   }
 
@@ -184,7 +182,8 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.downloadFile(object);
-    } catch (e) {
+    } catch (_) {
+      // 下载失败时静默处理
     }
   }
 
@@ -338,7 +337,8 @@ class HomepageController extends GetxController {
           results.addAll(subResults);
         }
       }
-    } catch (e) {
+    } catch (_) {
+      // 跳过无法访问的子目录
     }
 
     return results;
