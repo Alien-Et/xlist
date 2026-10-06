@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dio/io.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:get/get.dart' show Get, GetxService;
 import 'package:get/get_instance/src/extension_instance.dart';
 
@@ -43,8 +44,11 @@ class DioService extends GetxService {
 
       // HttpClient
       HttpClient httpClient = HttpClient(context: sc);
-      httpClient.badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
+      // 仅调试模式放宽证书校验，Release 模式使用系统严格校验，防止中间人攻击
+      if (kDebugMode) {
+        httpClient.badCertificateCallback =
+            (X509Certificate cert, String host, int port) => true;
+      }
 
       return httpClient;
     };

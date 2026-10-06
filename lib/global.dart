@@ -196,11 +196,11 @@ class Global {
     print('\n--- Configuring logging ---');
     
     try {
-      // 强制启用调试日志，无论是否是debug模式
-      Logger.setDebugEnabled(true);
-      
-      // 启用文件日志
-      Logger.setFileLoggingEnabled(true);
+      // 仅开发模式启用调试日志和文件日志，Release 模式保持关闭，避免敏感信息落盘
+      if (kDebugMode) {
+        Logger.setDebugEnabled(true);
+        Logger.setFileLoggingEnabled(true);
+      }
       
       print('✓ Logging development mode enabled');
       print('✓ Debug logs will be shown');

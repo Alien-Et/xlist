@@ -480,14 +480,11 @@ class CoreService extends GetxService {
       // 构建认证头
       Logger.d('Username: $username');
       Logger.d('Password length: ${password.length}');
-      Logger.d('Password: $password'); // 临时打印密码，方便调试
       
       final credentials = '$username:$password';
       final encodedCredentials = base64Encode(utf8.encode(credentials));
       final authHeader = 'Basic $encodedCredentials';
       
-      Logger.d('Encoded credentials: ${encodedCredentials.substring(0, 20)}...'); // 只打印前20个字符，避免泄露密码
-      Logger.d('Auth header: ${authHeader.substring(0, 20)}...'); // 只打印前20个字符，避免泄露密码
       Logger.d('WebDAV Server: $serverUrl');
       Logger.d('WebDAV Path: $path');
       Logger.d('Final WebDAV URL: $webDavUrl');
@@ -569,14 +566,8 @@ class CoreService extends GetxService {
         Logger.d('Status message: ${response.statusMessage}');
         Logger.d('Response length: ${response.data?.length ?? 0}');
         
-        // 打印响应头
+        // 打印响应头（不含完整响应体，避免敏感信息泄露）
         Logger.d('Response headers: ${response.headers}');
-        
-        // 打印完整的响应数据
-        if (response.data != null) {
-          final responseData = response.data.toString();
-          Logger.d('Full response data: $responseData');
-        }
         
         // 检查响应状态
         if (response.statusCode == 207) {
@@ -696,17 +687,6 @@ class CoreService extends GetxService {
       );
       onError?.call(error);
       errorMessage.value = errorMsg;
-      currentObjects.value = [];
-      return [];
-    } catch (e) {
-      Logger.e('Unexpected error in WebDAV request: $e');
-      final error = WebDAVError(
-        WebDAVErrorType.UNKNOWN_ERROR,
-        'Unknown error: ${e.toString()}',
-        originalError: e,
-      );
-      onError?.call(error);
-      errorMessage.value = error.message;
       currentObjects.value = [];
       return [];
     } catch (e) {
@@ -1518,7 +1498,7 @@ class CoreService extends GetxService {
           final loginJson = jsonDecode(loginData);
           if (loginJson['code'] == 200 && loginJson['data'] != null) {
             token = loginJson['data']['token']?.toString() ?? '';
-            Logger.d('Successfully obtained token: ${token.substring(0, 20)}...');
+            Logger.d('Successfully obtained token, length: ${token.length}');
           } else {
             Logger.w('Login failed: ${loginJson['message'] ?? 'Unknown error'}');
             throw Exception('Login failed: ${loginJson['message'] ?? 'Unknown error'}');

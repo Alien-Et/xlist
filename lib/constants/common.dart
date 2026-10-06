@@ -64,25 +64,25 @@ class FileType {
 
   /// 获取文件类型图标
   /// [type] 文件类型
-  static getIcon(int type, String name) {
-    if (type == FileType.FOLDER) return FontAwesomeIcons.solidFolder;
-    if (PreviewHelper.isImage(name)) return FontAwesomeIcons.solidFileImage;
-    if (PreviewHelper.isVideo(name)) return FontAwesomeIcons.solidFileVideo;
-    if (PreviewHelper.isAudio(name)) return FontAwesomeIcons.solidFileAudio;
-    if (PreviewHelper.isDocument(name)) return FontAwesomeIcons.solidFileLines;
+  static IconData getIcon(int type, String name) {
+    if (type == FileType.FOLDER) return FontAwesomeIcons.solidFolder.data;
+    if (PreviewHelper.isImage(name)) return FontAwesomeIcons.solidFileImage.data;
+    if (PreviewHelper.isVideo(name)) return FontAwesomeIcons.solidFileVideo.data;
+    if (PreviewHelper.isAudio(name)) return FontAwesomeIcons.solidFileAudio.data;
+    if (PreviewHelper.isDocument(name)) return FontAwesomeIcons.solidFileLines.data;
 
     return FileTypeIcons[type];
   }
 }
 
 /// 文件类型图标
-const FileTypeIcons = [
-  FontAwesomeIcons.solidFile,
-  FontAwesomeIcons.solidFolder,
-  FontAwesomeIcons.solidFileVideo,
-  FontAwesomeIcons.solidFileAudio,
-  FontAwesomeIcons.solidFileLines,
-  FontAwesomeIcons.solidFileImage,
+final FileTypeIcons = [
+  FontAwesomeIcons.solidFile.data,
+  FontAwesomeIcons.solidFolder.data,
+  FontAwesomeIcons.solidFileVideo.data,
+  FontAwesomeIcons.solidFileAudio.data,
+  FontAwesomeIcons.solidFileLines.data,
+  FontAwesomeIcons.solidFileImage.data,
 ];
 
 const ThemeModeMap = {

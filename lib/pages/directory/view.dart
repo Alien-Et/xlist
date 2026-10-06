@@ -83,7 +83,7 @@ class DirectoryPage extends GetView<DirectoryController> {
         padding: EdgeInsets.zero,
         alignment: Alignment.centerLeft,
         child: controller.root
-            ? Icon(FontAwesomeIcons.xmark, size: CommonUtils.navIconSize)
+            ? Icon(FontAwesomeIcons.xmark.data, size: CommonUtils.navIconSize)
             : Icon(
                 CupertinoIcons.chevron_back,
                 size: CommonUtils.isPad ? 30 : 80.sp,

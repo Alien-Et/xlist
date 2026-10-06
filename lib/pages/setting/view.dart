@@ -26,7 +26,7 @@ class SettingPage extends GetView<SettingController> {
       leading: CupertinoButton(
         padding: EdgeInsets.zero,
         alignment: Alignment.centerLeft,
-        child: Icon(FontAwesomeIcons.xmark, size: CommonUtils.navIconSize),
+        child: Icon(FontAwesomeIcons.xmark.data, size: CommonUtils.navIconSize),
         onPressed: () => Get.back(),
       ),
       middle: Text('setting'.tr),

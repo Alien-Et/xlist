@@ -84,7 +84,7 @@ class ServerPage extends GetView<ServerController> {
               children: [
                 SizedBox(width: CommonUtils.isPad ? 20 : 50.w),
                 Icon(
-                  FontAwesomeIcons.server,
+                  FontAwesomeIcons.server.data,
                   size: CommonUtils.navIconSize,
                   color: server.id == controller.serverId.value
                       ? Get.theme.primaryColor
