@@ -39,24 +39,34 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 生成 release 签名密钥（密钥密码优先取 Secrets，未配置时用 CI 默认值）
-      - name: Generate release keystore
+      # 恢复或生成 release 签名密钥：
+      # - 若配置了 secrets.KEYSTORE（base64 的 jks），使用固定密钥（推荐，可覆盖升级）
+      # - 否则生成临时密钥（每次构建签名不同，仅适合测试分发）
+      - name: Restore or generate release keystore
         env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
         run: |
           PASS="${KEYSTORE_PASSWORD:-xlist-ci-2026}"
-          keytool -genkey -v \
-            -keystore "$RUNNER_TEMP/release-key.jks" \
-            -keyalg RSA -keysize 2048 -validity 10000 \
-            -alias xlist -storepass "$PASS" -keypass "$PASS" \
-            -dname "CN=XList, OU=Dev, O=XList, L=City, S=State, C=CN" 2>/dev/null
+          ALIAS="${KEY_ALIAS:-xlist}"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release-key.jks"
+            echo "restored keystore from secrets (alias: $ALIAS)"
+          else
+            keytool -genkey -v \
+              -keystore "$RUNNER_TEMP/release-key.jks" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias "$ALIAS" -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=XList, OU=Dev, O=XList, L=City, S=State, C=CN" 2>/dev/null
+            echo "generated temporary keystore (alias: $ALIAS)"
+          fi
           cat > keystore.properties <<EOF
           storeFile=$RUNNER_TEMP/release-key.jks
           storePassword=$PASS
-          keyAlias=xlist
+          keyAlias=$ALIAS
           keyPassword=$PASS
           EOF
-          echo "keystore generated (alias: xlist)"
 
       # 构建正式版 APK（release，已签名）
       - name: Build release APK
