@@ -1,12 +1,12 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:xlist/models/index.dart';
-import 'package:xlist/common/index.dart';
 import 'package:xlist/models/object.dart';
 import 'package:easy_refresh/easy_refresh.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/services/core_service.dart';
 import 'package:xlist/database/entity/index.dart';
+import 'package:xlist/helper/index.dart';
 
 class HomepageController extends GetxController {
   final objects = Rx<List<ObjectModel>>([]);
@@ -14,11 +14,18 @@ class HomepageController extends GetxController {
   final serverId = 0.obs;
   final layoutType = 'grid'.obs;
   final isShowPreview = true.obs;
+  final sortType = SortType.TIME_DESC.obs;
+
+  // 多选模式
+  final isSelectMode = false.obs;
+  final selectedObjects = <ObjectModel>[].obs;
   final userInfo = Rx<dynamic>(null);
   final errorMessage = "".obs;
   final currentPath = "".obs;
   final searchQuery = "".obs;
   final isSearching = false.obs;
+  final searchedCount = 0.obs; // 已扫描目录数
+  bool _cancelSearch = false;
 
   final EasyRefreshController easyRefreshController = EasyRefreshController(
     controlFinishRefresh: true,
@@ -31,17 +38,14 @@ class HomepageController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    print('=== Initializing HomepageController ===');
 
     // 初始化 CoreService
     _initCoreService();
 
     // 延迟获取文件列表，确保CoreService已完全初始化
     Future.delayed(Duration(milliseconds: 500), () {
-      print('=== Delayed getObjectList call ===');
       getObjectList();
     });
-    print('=== HomepageController initialization completed ===');
   }
 
   // 初始化 CoreService
@@ -49,9 +53,7 @@ class HomepageController extends GetxController {
     try {
       coreService = CoreService.to;
       serverId.value = coreService?.userStorage.serverId.value ?? 0;
-      print('✓ CoreService initialized');
     } catch (e) {
-      print('⚠ Error initializing CoreService: $e');
       coreService = null;
       errorMessage.value = '核心服务初始化失败';
     }
@@ -60,11 +62,7 @@ class HomepageController extends GetxController {
   // 检查服务器是否配置
   bool get isServerConfigured {
     bool configured = coreService != null && coreService!.currentServer.value != null;
-    print('=== Server configuration check: $configured ===');
     if (coreService != null) {
-      print('CoreService available: ${coreService != null}');
-      print('Current server: ${coreService!.currentServer.value?.url ?? 'null'}');
-      print('Current user: ${coreService!.currentUser.value != null}');
     }
     return configured;
   }
@@ -75,62 +73,45 @@ class HomepageController extends GetxController {
   }
 
   Future<void> getObjectList({bool refresh = false, String path = '/'}) async {
-    print('=== Starting getObjectList() for path: $path ===');
     isFirstLoading.value = true;
     errorMessage.value = '';
     currentPath.value = path;
 
     try {
-      print('=== Getting WebDAV files from path: $path ===');
       
       // 检查 CoreService 是否初始化
       if (coreService == null) {
-        print('⚠ CoreService not initialized, trying to reinitialize...');
         _initCoreService();
         if (coreService == null) {
           throw Exception('核心服务不可用');
         }
-        print('✓ CoreService reinitialized');
       } else {
-        print('✓ CoreService already initialized');
       }
 
       // 确保服务器配置已经加载
-      print('Checking server configuration...');
       if (coreService!.currentServer.value == null) {
-        print('⚠ Server not loaded, trying to load recent server...');
         await coreService!.loadRecentServer();
         if (coreService!.currentServer.value == null) {
-          print('⚠ No server configured after loading');
           objects.value = [];
           return;
         }
-        print('✓ Server loaded after loadRecentServer');
       } else {
-        print('✓ Server already loaded: ${coreService!.currentServer.value!.url}');
         // 即使服务器已经加载，也再次确认，确保配置正确
         await coreService!.loadRecentServer();
         if (coreService!.currentServer.value == null) {
-          print('⚠ Server lost after reload');
           objects.value = [];
           return;
         }
-        print('✓ Server still loaded after reload: ${coreService!.currentServer.value!.url}');
       }
 
       // 使用 CoreService 获取 WebDAV 文件列表
-      print('✓ Server configured: ${coreService!.currentServer.value!.url}');
-      print('Sending WebDAV request...');
       
       // 测试WebDAV连接
-      final server = coreService!.currentServer.value!;
-      print('Testing WebDAV connection for: ${server.url}');
       
       // 生产阶段使用真实数据
       final files = await coreService!.getWebDAVFiles(
         path,
         onError: (error) {
-          print('⚠ WebDAV error: $error');
           errorMessage.value = error.message;
         },
       );
@@ -138,22 +119,17 @@ class HomepageController extends GetxController {
       // 开发阶段使用模拟数据，验证UI是否正常
       // final files = await coreService!.getMockWebDAVFiles(path);
       
-      objects.value = files;
-      print('✓ Got ${files.length} files from WebDAV');
-      print('Files: ${files.map((f) => f.name).toList()}');
+      objects.value = ObjectHelper.sortObjects(files, sortType.value);
     } catch (e) {
-      print('✗ Error getting object list: $e');
       objects.value = [];
       errorMessage.value = '获取文件列表失败: ${e.toString()}';
     } finally {
       isFirstLoading.value = false;
-      print('=== File list retrieval completed ===');
     }
   }
 
   Future<dynamic> resetUserToken(dynamic server, {bool force = false}) async {
     try {
-      print('Resetting user token for server: ${server?.url ?? 'unknown'}');
       
       if (coreService == null) {
         _initCoreService();
@@ -164,10 +140,8 @@ class HomepageController extends GetxController {
 
       await coreService!.refreshAllData();
       serverId.value = coreService!.userStorage.serverId.value;
-      print('✓ User token reset');
       return coreService!.currentUser.value;
     } catch (e) {
-      print('✗ Error resetting user token: $e');
       return null;
     }
   }
@@ -182,9 +156,7 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.addToFavorites(object);
-      print('✓ Added ${object.name} to favorites');
     } catch (e) {
-      print('✗ Error adding to favorites: $e');
     }
   }
 
@@ -198,9 +170,7 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.addToRecent(object);
-      print('✓ Added ${object.name} to recent');
     } catch (e) {
-      print('✗ Error adding to recent: $e');
     }
   }
 
@@ -214,22 +184,85 @@ class HomepageController extends GetxController {
       }
 
       await coreService!.downloadFile(object);
-      print('✓ Started download for ${object.name}');
     } catch (e) {
-      print('✗ Error downloading object: $e');
     }
   }
 
   // 切换布局类型
   void toggleLayoutType() {
     layoutType.value = layoutType.value == 'grid' ? 'list' : 'grid';
-    print('✓ Layout type changed to ${layoutType.value}');
+  }
+
+  // 切换排序类型
+  void changeSortType(int type) {
+    sortType.value = type;
+    objects.value = ObjectHelper.sortObjects(objects.value, type);
+  }
+
+  // 进入 / 退出多选模式
+  void toggleSelectMode() {
+    isSelectMode.value = !isSelectMode.value;
+    selectedObjects.clear();
+  }
+
+  // 切换单个对象选中状态
+  void toggleSelect(ObjectModel object) {
+    if (selectedObjects.contains(object)) {
+      selectedObjects.remove(object);
+    } else {
+      selectedObjects.add(object);
+    }
+  }
+
+  // 判断对象是否已选中
+  bool isSelected(ObjectModel object) {
+    return selectedObjects.contains(object);
+  }
+
+  // 全选 / 取消全选
+  void selectAll() {
+    if (selectedObjects.length == objects.value.length) {
+      selectedObjects.clear();
+    } else {
+      selectedObjects.assignAll(objects.value);
+    }
+  }
+
+  // 批量下载
+  Future<void> batchDownload() async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchDownload(selected, currentPath.value);
+  }
+
+  // 批量移动 / 复制
+  Future<void> batchMoveOrCopy({required bool isCopy}) async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchMoveOrCopy(
+      objects: selected,
+      srcDir: currentPath.value,
+      isCopy: isCopy,
+      source: PageSource.HOMEPAGE,
+      pageTag: '',
+    );
+  }
+
+  // 批量删除
+  Future<void> batchDelete() async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchDelete(
+      objects: selected,
+      path: currentPath.value,
+      source: PageSource.HOMEPAGE,
+      pageTag: '',
+    );
   }
 
   // 切换预览显示
   void togglePreview() {
     isShowPreview.value = !isShowPreview.value;
-    print('✓ Preview toggled to ${isShowPreview.value}');
   }
 
   // 导航到上级目录
@@ -254,42 +287,60 @@ class HomepageController extends GetxController {
     }
 
     isSearching.value = true;
+    _cancelSearch = false;
+    searchedCount.value = 0;
     try {
       // 全局搜索实现，递归搜索所有子目录
-      final allFiles = await _searchRecursive('/');
+      final allFiles = await _searchRecursive('/', 0, (count) {
+        searchedCount.value = count;
+      });
+      if (_cancelSearch) return;
       final filteredFiles = allFiles.where((file) {
         return file.name?.toLowerCase().contains(query.toLowerCase()) ?? false;
       }).toList();
       objects.value = filteredFiles;
     } catch (e) {
-      print('Error searching files: $e');
       objects.value = [];
     } finally {
       isSearching.value = false;
     }
   }
 
+  // 取消搜索
+  void cancelSearch() {
+    _cancelSearch = true;
+    isSearching.value = false;
+  }
+
   // 递归搜索所有子目录
-  Future<List<ObjectModel>> _searchRecursive(String path) async {
+  Future<List<ObjectModel>> _searchRecursive(
+    String path,
+    int depth,
+    void Function(int count) onProgress,
+  ) async {
     final results = <ObjectModel>[];
-    
+
+    // 已取消则停止
+    if (_cancelSearch) return results;
+
     try {
       final files = await coreService!.getWebDAVFiles(path);
-      
+      onProgress(depth);
+
       for (final file in files) {
+        if (_cancelSearch) return results;
         results.add(file);
-        
+
         // 如果是目录，递归搜索
         if (file.isDir == true) {
           final subPath = path == '/' ? '/${file.name}' : '$path/${file.name}';
-          final subResults = await _searchRecursive(subPath);
+          final subResults = await _searchRecursive(subPath, depth + 1, onProgress);
           results.addAll(subResults);
         }
       }
     } catch (e) {
-      print('Error in recursive search for path $path: $e');
     }
-    
+
     return results;
   }
 

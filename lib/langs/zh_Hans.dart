@@ -51,6 +51,7 @@ const Map<String, String> zh_Hans = {
   'rename': '重命名',
   'move': '移动',
   'copy': '复制',
+  'paste_to_here': '粘贴到此处',
   'more': '更多',
   'favorite': '收藏',
   'recent': '最近浏览',

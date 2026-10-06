@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:get/get.dart';
 import 'package:jiffy/jiffy.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
@@ -13,8 +12,6 @@ import 'package:xlist/models/index.dart';
 import 'package:xlist/models/user.dart'; // 导入 UserModel
 import 'package:xlist/common/index.dart';
 import 'package:xlist/services/index.dart';
-import 'package:xlist/storages/index.dart';
-import 'package:xlist/storages/user_storage.dart'; // 导入 UserStorage
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/routes/app_pages.dart';
 import 'package:xlist/repositorys/index.dart';
@@ -262,9 +259,8 @@ class ObjectHelper {
 
         for (var pickedFile in pickedFiles) {
           try {
-            // 文件名称
-            final fileName = DateTime.now().millisecondsSinceEpoch.toString() +
-                p.extension(pickedFile.name);
+            // 文件名称（保留原文件名）
+            final fileName = pickedFile.name;
 
             // 上传文件
             final response = await ObjectRepository.put(
@@ -459,13 +455,17 @@ class ObjectHelper {
           await showFileProperties(object);
           break;
         case 'download':
-          // 下载文件
-          await DownloadHelper.file(
-            path,
-            object.name!,
-            object.type!,
-            object.size ?? 0,
-          );
+          // 下载文件 / 文件夹
+          if (object.isDir == true) {
+            await DownloadHelper.directory(path, object.name!);
+          } else {
+            await DownloadHelper.file(
+              path,
+              object.name!,
+              object.type!,
+              object.size ?? 0,
+            );
+          }
           break;
         case 'copyLink':
           // 复制链接
@@ -604,7 +604,6 @@ class ObjectHelper {
       SmartDialog.showLoading();
       final srcPath = _clipboardData!['path'] as String;
       final fileName = _clipboardData!['name'] as String;
-      final isDir = _clipboardData!['isDir'] as bool;
 
       dynamic response;
       if (_clipboardOperation == ClipboardOperation.cut) {
@@ -792,6 +791,199 @@ class ObjectHelper {
     } catch (e) {
       SmartDialog.dismiss();
       SmartDialog.showToast(e.toString());
+    }
+  }
+
+  /// 批量下载
+  static Future<void> batchDownload(
+    List<ObjectModel> objects,
+    String path,
+  ) async {
+    if (objects.isEmpty) return;
+    SmartDialog.showLoading();
+    try {
+      for (final object in objects) {
+        await DownloadHelper.file(
+          path,
+          object.name!,
+          object.type!,
+          object.size ?? 0,
+        );
+      }
+      SmartDialog.dismiss();
+      SmartDialog.showToast('已开始下载 ${objects.length} 个项目');
+    } catch (e) {
+      SmartDialog.dismiss();
+      SmartDialog.showToast(e.toString());
+    }
+  }
+
+  /// 批量移动 / 复制
+  static Future<void> batchMoveOrCopy({
+    required List<ObjectModel> objects,
+    required String srcDir,
+    required bool isCopy,
+    required String source,
+    required String pageTag,
+  }) async {
+    if (objects.isEmpty) return;
+
+    // 选择目标目录
+    final selectedPath = await _selectDirectory(srcDir);
+    if (selectedPath == null || selectedPath == srcDir) return;
+
+    SmartDialog.showLoading();
+    try {
+      for (final object in objects) {
+        if (isCopy) {
+          await ObjectRepository.copy(
+            srcDir: srcDir,
+            dstDir: selectedPath,
+            name: object.name!,
+          );
+        } else {
+          await ObjectRepository.move(
+            srcDir: srcDir,
+            dstDir: selectedPath,
+            name: object.name!,
+          );
+        }
+      }
+      SmartDialog.dismiss();
+      SmartDialog.showToast(isCopy ? '复制成功' : '移动成功');
+      refreshObjectList(source: source, pageTag: pageTag);
+    } catch (e) {
+      SmartDialog.dismiss();
+      SmartDialog.showToast(e.toString());
+    }
+  }
+
+  /// 批量删除
+  static Future<void> batchDelete({
+    required List<ObjectModel> objects,
+    required String path,
+    required String source,
+    required String pageTag,
+  }) async {
+    if (objects.isEmpty) return;
+
+    final result = await showOkCancelAlertDialog(
+      context: Get.context!,
+      title: '删除确认',
+      message: '确定要删除选中的 ${objects.length} 个项目吗？此操作不可恢复。',
+      okLabel: 'confirm'.tr,
+      cancelLabel: 'cancel'.tr,
+      isDestructiveAction: true,
+    );
+    if (result != OkCancelResult.ok) return;
+
+    SmartDialog.showLoading();
+    try {
+      for (final object in objects) {
+        await ObjectRepository.remove(path: path, name: object.name!);
+      }
+      SmartDialog.dismiss();
+      SmartDialog.showToast('删除成功');
+      refreshObjectList(source: source, pageTag: pageTag);
+    } catch (e) {
+      SmartDialog.dismiss();
+      SmartDialog.showToast(e.toString());
+    }
+  }
+
+  /// 排序文件列表
+  /// 文件夹始终排在文件前面，组内按 [sortType] 排序
+  /// [objects] 文件列表
+  /// [sortType] 排序类型（SortType）
+  static List<ObjectModel> sortObjects(
+    List<ObjectModel> objects,
+    int sortType,
+  ) {
+    final sorted = List<ObjectModel>.from(objects);
+    sorted.sort((a, b) {
+      // 文件夹优先
+      final aDir = a.isDir == true;
+      final bDir = b.isDir == true;
+      if (aDir != bDir) return aDir ? -1 : 1;
+
+      switch (sortType) {
+        case SortType.TIME_DESC:
+          return (b.modified ?? DateTime(0)).compareTo(a.modified ?? DateTime(0));
+        case SortType.TIME_ASC:
+          return (a.modified ?? DateTime(0)).compareTo(b.modified ?? DateTime(0));
+        case SortType.NAME_DESC:
+          return (b.name ?? '').toLowerCase().compareTo((a.name ?? '').toLowerCase());
+        case SortType.NAME_ASC:
+          return (a.name ?? '').toLowerCase().compareTo((b.name ?? '').toLowerCase());
+        case SortType.SIZE_DESC:
+          return (b.size ?? 0).compareTo(a.size ?? 0);
+        case SortType.SIZE_ASC:
+          return (a.size ?? 0).compareTo(b.size ?? 0);
+        default:
+          return 0;
+      }
+    });
+    return sorted;
+  }
+
+  /// 显示排序选择菜单
+  /// [current] 当前排序类型
+  /// 返回用户选择的 SortType，取消返回 null
+  static Future<int?> showSortMenu(int current) async {
+    final value = await showModalActionSheet(
+      context: Get.context!,
+      title: '排序方式',
+      actions: [
+        SheetAction(
+          label: '${current == SortType.TIME_DESC ? '✓ ' : ''}时间 · 最新优先',
+          key: 'time_desc',
+          isDefaultAction: current == SortType.TIME_DESC,
+        ),
+        SheetAction(
+          label: '${current == SortType.TIME_ASC ? '✓ ' : ''}时间 · 最旧优先',
+          key: 'time_asc',
+          isDefaultAction: current == SortType.TIME_ASC,
+        ),
+        SheetAction(
+          label: '${current == SortType.NAME_ASC ? '✓ ' : ''}名称 · A→Z',
+          key: 'name_asc',
+          isDefaultAction: current == SortType.NAME_ASC,
+        ),
+        SheetAction(
+          label: '${current == SortType.NAME_DESC ? '✓ ' : ''}名称 · Z→A',
+          key: 'name_desc',
+          isDefaultAction: current == SortType.NAME_DESC,
+        ),
+        SheetAction(
+          label: '${current == SortType.SIZE_DESC ? '✓ ' : ''}大小 · 从大到小',
+          key: 'size_desc',
+          isDefaultAction: current == SortType.SIZE_DESC,
+        ),
+        SheetAction(
+          label: '${current == SortType.SIZE_ASC ? '✓ ' : ''}大小 · 从小到大',
+          key: 'size_asc',
+          isDefaultAction: current == SortType.SIZE_ASC,
+        ),
+      ],
+      cancelLabel: 'cancel'.tr,
+    );
+    if (value == null) return null;
+
+    switch (value) {
+      case 'time_desc':
+        return SortType.TIME_DESC;
+      case 'time_asc':
+        return SortType.TIME_ASC;
+      case 'name_asc':
+        return SortType.NAME_ASC;
+      case 'name_desc':
+        return SortType.NAME_DESC;
+      case 'size_desc':
+        return SortType.SIZE_DESC;
+      case 'size_asc':
+        return SortType.SIZE_ASC;
+      default:
+        return null;
     }
   }
 }

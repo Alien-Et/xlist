@@ -51,6 +51,7 @@ const Map<String, String> en_US = {
   'rename': 'Rename',
   'move': 'Move',
   'copy': 'Copy',
+  'paste_to_here': 'Paste here',
   'more': 'More',
   'favorite': 'Favorite',
   'recent': 'Recent',

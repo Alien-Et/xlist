@@ -103,6 +103,117 @@ class DownloadHelper {
     }
   }
 
+  /// 递归下载文件夹
+  /// [path] 文件夹父路径
+  /// [name] 文件夹名
+  static Future<void> directory(String path, String name) async {
+    bool isStorage = await checkPermissionStorage();
+    if (!isStorage) {
+      SmartDialog.showToast('toast_no_storage_permission'.tr);
+      return;
+    }
+
+    final serverId = Get.find<UserStorage>().serverId.value;
+    final folderPath = '$path/$name';
+
+    try {
+      SmartDialog.showLoading();
+      final response = await ObjectRepository.getList(path: folderPath);
+      SmartDialog.dismiss();
+      if (response == null || response['code'] != 200) {
+        SmartDialog.showToast('toast_download_fail'.tr);
+        return;
+      }
+
+      final content = (response['data']['content'] as List)
+          .map((json) => ObjectModel.fromJson(json))
+          .toList();
+
+      var count = 0;
+      await _downloadFolderRecursive(
+        folderPath,
+        content,
+        serverId,
+        () => count++,
+      );
+      SmartDialog.showToast(count == 0 ? '文件夹为空' : '已添加 $count 个文件到下载列表');
+    } catch (e) {
+      SmartDialog.dismiss();
+      SmartDialog.showToast('toast_download_fail'.tr);
+    }
+  }
+
+  /// 递归遍历文件夹并添加下载
+  static Future<void> _downloadFolderRecursive(
+    String folderPath,
+    List<ObjectModel> objects,
+    int serverId,
+    void Function() onFile,
+  ) async {
+    for (final object in objects) {
+      final subPath = '$folderPath/${object.name}';
+      if (object.isDir == true) {
+        // 递归子文件夹
+        final response = await ObjectRepository.getList(path: subPath);
+        if (response != null && response['code'] == 200) {
+          final children = (response['data']['content'] as List)
+              .map((json) => ObjectModel.fromJson(json))
+              .toList();
+          await _downloadFolderRecursive(subPath, children, serverId, onFile);
+        }
+      } else {
+        // 单个文件
+        onFile();
+        await _enqueueDownload(
+          subPath,
+          object.name ?? '',
+          object.type ?? 0,
+          object.size ?? 0,
+          serverId,
+        );
+      }
+    }
+  }
+
+  /// 添加单个文件到下载列表（不重复弹窗）
+  static Future<void> _enqueueDownload(
+    String fullPath,
+    String name,
+    int type,
+    int size,
+    int serverId,
+  ) async {
+    // 检查是否已在下载列表中
+    final parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+    final download = await DatabaseService.to.database.downloadDao
+        .findDownloadByServerIdAndPath(serverId, parentDir, name);
+    if (download != null) return;
+
+    // 获取下载地址
+    final object = await getDownloadUrl(parentDir, name);
+    if (object.rawUrl == null || object.rawUrl!.isEmpty) return;
+
+    // 添加到下载列表
+    final taskId = await FlutterDownloader.enqueue(
+      url: object.rawUrl ?? '',
+      headers: DriverHelper.getHeaders(object.provider, object.rawUrl),
+      savedDir: await getDownloadPath(fullPath),
+      showNotification: false,
+    );
+
+    // 添加到数据库
+    await DatabaseService.to.database.downloadDao.insertDownload(
+      DownloadEntity(
+        serverId: serverId,
+        path: parentDir,
+        name: name,
+        taskId: taskId!,
+        type: type,
+        size: size,
+      ),
+    );
+  }
+
   /// 获取下载地址
   static Future<ObjectModel> getDownloadUrl(String path, String name) async {
     // 目录密码

@@ -1,13 +1,11 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:adaptive_dialog/adaptive_dialog.dart';
 
 import 'package:xlist/models/index.dart';
 import 'package:xlist/helper/index.dart';
 import 'package:xlist/services/core_service.dart';
 import 'package:xlist/constants/index.dart';
-import 'package:xlist/database/entity/index.dart';
 
 class DirectoryController extends GetxController {
   final userInfo = UserModel().obs; // 用户信息
@@ -16,6 +14,16 @@ class DirectoryController extends GetxController {
 
   // 显示预览图
   late final isShowPreview = false.obs;
+
+  // 布局类型: list / grid
+  final layoutType = 'list'.obs;
+
+  // 排序类型
+  final sortType = SortType.TIME_DESC.obs;
+
+  // 多选模式
+  final isSelectMode = false.obs;
+  final selectedObjects = <ObjectModel>[].obs;
 
   // 获取参数
   String path = Get.arguments['path'] ?? '/';
@@ -75,11 +83,83 @@ class DirectoryController extends GetxController {
       
       // 暂时使用模拟数据
       objects.clear();
-      objects.addAll(coreService.currentObjects);
+      objects.addAll(
+        ObjectHelper.sortObjects(coreService.currentObjects, sortType.value),
+      );
       objects.refresh();
     } catch (e) {
       print('Error getting directory list: $e');
     }
+  }
+
+  /// 切换排序类型
+  void changeSortType(int type) {
+    sortType.value = type;
+    final sorted = ObjectHelper.sortObjects(objects, type);
+    objects
+      ..clear()
+      ..addAll(sorted);
+  }
+
+  /// 进入 / 退出多选模式
+  void toggleSelectMode() {
+    isSelectMode.value = !isSelectMode.value;
+    selectedObjects.clear();
+  }
+
+  /// 切换单个对象选中状态
+  void toggleSelect(ObjectModel object) {
+    if (selectedObjects.contains(object)) {
+      selectedObjects.remove(object);
+    } else {
+      selectedObjects.add(object);
+    }
+  }
+
+  /// 判断对象是否已选中
+  bool isSelected(ObjectModel object) {
+    return selectedObjects.contains(object);
+  }
+
+  /// 全选 / 取消全选
+  void selectAll() {
+    if (selectedObjects.length == objects.length) {
+      selectedObjects.clear();
+    } else {
+      selectedObjects.assignAll(objects);
+    }
+  }
+
+  /// 批量下载
+  Future<void> batchDownload() async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchDownload(selected, path);
+  }
+
+  /// 批量移动 / 复制
+  Future<void> batchMoveOrCopy({required bool isCopy}) async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchMoveOrCopy(
+      objects: selected,
+      srcDir: path,
+      isCopy: isCopy,
+      source: source,
+      pageTag: tag,
+    );
+  }
+
+  /// 批量删除
+  Future<void> batchDelete() async {
+    final selected = List<ObjectModel>.from(selectedObjects);
+    toggleSelectMode();
+    await ObjectHelper.batchDelete(
+      objects: selected,
+      path: path,
+      source: source,
+      pageTag: tag,
+    );
   }
 
   /// 移动和复制

@@ -6,13 +6,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 
 import 'package:xlist/common/index.dart';
-import 'package:xlist/storages/index.dart';
 import 'package:xlist/routes/app_pages.dart';
 import 'package:xlist/pages/homepage/index.dart';
-import 'package:xlist/pages/setting/index.dart';
 import 'package:xlist/components/index.dart';
 import 'package:xlist/helper/index.dart';
-import 'package:xlist/gen/assets.gen.dart';
+import 'package:xlist/models/index.dart';
 
 class Homepage extends GetView<HomepageController> {
   const Homepage({Key? key}) : super(key: key);
@@ -63,25 +61,41 @@ class Homepage extends GetView<HomepageController> {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () {
-                        ObjectHelper.click(
-                          path: controller.currentPath.value,
-                          type: object.type ?? 0,
-                          name: object.name ?? '',
-                          objects: controller.objects.value,
-                        );
+                        if (controller.isSelectMode.value) {
+                          controller.toggleSelect(object);
+                        } else {
+                          ObjectHelper.click(
+                            path: controller.currentPath.value,
+                            type: object.type ?? 0,
+                            name: object.name ?? '',
+                            objects: controller.objects.value,
+                          );
+                        }
                       },
                       onLongPress: () {
-                        ObjectHelper.showContextMenu(
-                          path: controller.currentPath.value,
-                          object: object,
-                          objects: controller.objects.value,
-                          source: 'HOMEPAGE',
-                          pageTag: '',
-                        );
+                        if (!controller.isSelectMode.value) {
+                          ObjectHelper.showContextMenu(
+                            path: controller.currentPath.value,
+                            object: object,
+                            objects: controller.objects.value,
+                            source: 'HOMEPAGE',
+                            pageTag: '',
+                          );
+                        }
                       },
-                      child: ObjectGridItem(
-                        object: object,
-                        isShowPreview: controller.isShowPreview.value,
+                      child: Stack(
+                        children: [
+                          ObjectGridItem(
+                            object: object,
+                            isShowPreview: controller.isShowPreview.value,
+                          ),
+                          if (controller.isSelectMode.value)
+                            Positioned(
+                              top: 6.r,
+                              right: 6.r,
+                              child: _buildSelectBadge(object),
+                            ),
+                        ],
                       ),
                     ),
                   );
@@ -108,34 +122,50 @@ class Homepage extends GetView<HomepageController> {
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () {
-                    ObjectHelper.click(
-                      path: controller.currentPath.value,
-                      type: object.type ?? 0,
-                      name: object.name ?? '',
-                      objects: controller.objects.value,
-                    );
+                    if (controller.isSelectMode.value) {
+                      controller.toggleSelect(object);
+                    } else {
+                      ObjectHelper.click(
+                        path: controller.currentPath.value,
+                        type: object.type ?? 0,
+                        name: object.name ?? '',
+                        objects: controller.objects.value,
+                      );
+                    }
                   },
                   onLongPress: () {
-                    ObjectHelper.showContextMenu(
-                      path: controller.currentPath.value,
-                      object: object,
-                      objects: controller.objects.value,
-                      source: 'HOMEPAGE',
-                      pageTag: '',
-                    );
-                  },
-                  child: Column(
-                    children: [
-                      ObjectListItem(
+                    if (!controller.isSelectMode.value) {
+                      ObjectHelper.showContextMenu(
+                        path: controller.currentPath.value,
                         object: object,
-                        isShowPreview: controller.isShowPreview.value,
+                        objects: controller.objects.value,
+                        source: 'HOMEPAGE',
+                        pageTag: '',
+                      );
+                    }
+                  },
+                  child: Stack(
+                    children: [
+                      Column(
+                        children: [
+                          ObjectListItem(
+                            object: object,
+                            isShowPreview: controller.isShowPreview.value,
+                          ),
+                          Container(
+                            padding: EdgeInsets.only(top: CommonUtils.isPad ? 0 : 20.r),
+                            child: CommonUtils.isPad
+                                ? Divider(height: 1.r, indent: 90, endIndent: 10)
+                                : Divider(height: 1.r, indent: 190.r, endIndent: 15.r),
+                          ),
+                        ],
                       ),
-                      Container(
-                        padding: EdgeInsets.only(top: CommonUtils.isPad ? 0 : 20.r),
-                        child: CommonUtils.isPad
-                            ? Divider(height: 1.r, indent: 90, endIndent: 10)
-                            : Divider(height: 1.r, indent: 190.r, endIndent: 15.r),
-                      ),
+                      if (controller.isSelectMode.value)
+                        Positioned(
+                          top: 10.r,
+                          right: 10.r,
+                          child: _buildSelectBadge(object),
+                        ),
                     ],
                   ),
                 ),
@@ -145,6 +175,171 @@ class Homepage extends GetView<HomepageController> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 面包屑路径导航
+  Widget _buildBreadcrumb() {
+    final path = controller.currentPath.value;
+    final parts = path == '/'
+        ? <String>[]
+        : path.split('/').where((p) => p.isNotEmpty).toList();
+
+    return Container(
+      height: 44,
+      padding: EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.centerLeft,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          _crumbItem('/root'.tr, 0),
+          for (var i = 0; i < parts.length; i++)
+            _crumbItem(parts[i], i + 1, isLast: i == parts.length - 1),
+        ],
+      ),
+    );
+  }
+
+  /// 单个面包屑项
+  Widget _crumbItem(String name, int depth, {bool isLast = false}) {
+    return Row(
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: isLast ? null : () => controller.navigateToPath(_pathAt(depth)),
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+            child: Text(
+              name,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isLast ? FontWeight.w600 : FontWeight.normal,
+                color: isLast
+                    ? Get.theme.textTheme.bodyLarge?.color
+                    : Get.theme.primaryColor,
+              ),
+            ),
+          ),
+        ),
+        if (!isLast)
+          Icon(
+            CupertinoIcons.chevron_right,
+            size: 12,
+            color: Get.theme.dividerColor,
+          ),
+      ],
+    );
+  }
+
+  /// 根据深度计算路径
+  String _pathAt(int depth) {
+    final parts = controller.currentPath.value
+        .split('/')
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (depth <= 0) return '/';
+    return '/${parts.take(depth).join('/')}';
+  }
+
+  /// 选择角标
+  Widget _buildSelectBadge(ObjectModel object) {
+    final selected = controller.isSelected(object);
+    return Container(
+      width: 44.r,
+      height: 44.r,
+      decoration: BoxDecoration(
+        color: selected ? Get.theme.primaryColor : Colors.black26,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2.r),
+      ),
+      child: Icon(
+        selected ? Icons.check : Icons.circle_outlined,
+        size: 28.r,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  /// 批量操作栏
+  Widget _buildBatchActionBar() {
+    final isNarrow = Get.width < 400;
+    return Container(
+      height: CommonUtils.isPad ? 90 : (isNarrow ? 120.h : 140.h),
+      decoration: BoxDecoration(
+        color: Get.theme.scaffoldBackgroundColor,
+        border: Border(
+          top: BorderSide(width: 1.r, color: Get.theme.dividerColor),
+        ),
+      ),
+      padding: EdgeInsets.symmetric(horizontal: isNarrow ? 8 : 30.r),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _batchAction(
+            CupertinoIcons.checkmark_circle,
+            Obx(
+              () => Text(
+                controller.selectedObjects.length == controller.objects.value.length &&
+                        controller.objects.value.isNotEmpty
+                    ? '取消全选'
+                    : '全选',
+                style: Get.textTheme.bodySmall,
+              ),
+            ),
+            () => controller.selectAll(),
+          ),
+          _batchAction(
+            CupertinoIcons.download_circle,
+            Text('下载'),
+            () => controller.batchDownload(),
+          ),
+          _batchAction(
+            CupertinoIcons.folder,
+            Text('移动'),
+            () => controller.batchMoveOrCopy(isCopy: false),
+          ),
+          _batchAction(
+            CupertinoIcons.doc_on_doc,
+            Text('复制'),
+            () => controller.batchMoveOrCopy(isCopy: true),
+          ),
+          _batchAction(
+            CupertinoIcons.trash,
+            Text('删除'),
+            () => controller.batchDelete(),
+          ),
+          _batchAction(
+            CupertinoIcons.xmark_circle,
+            Text('退出'),
+            () => controller.toggleSelectMode(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 单个批量操作按钮
+  Widget _batchAction(
+    IconData icon,
+    Widget label,
+    VoidCallback onTap,
+  ) {
+    final isNarrow = Get.width < 400;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: CommonUtils.isPad ? 48 : (isNarrow ? 52.sp : 70.sp),
+            color: Get.theme.primaryColor,
+          ),
+          SizedBox(height: 8.h),
+          label,
+        ],
+      ),
     );
   }
 
@@ -209,17 +404,6 @@ class Homepage extends GetView<HomepageController> {
                 onChanged: (value) {
                   controller.searchQuery.value = value;
                 },
-                onTap: () {
-                  // 点击时显示完整路径
-                  final field = Get.context!.findRenderObject() as RenderBox?;
-                  if (field != null) {
-                    // 重新创建控制器，设置为完整路径
-                    final controller = CupertinoTextField();
-                    // 这里需要使用StatefulWidget来管理这个状态
-                    // 为了简单起见，我们暂时保持点击后显示完整路径的逻辑
-                    // 实际实现可能需要更复杂的状态管理
-                  }
-                },
                 suffix: IconButton(
                   icon: Icon(CupertinoIcons.search, size: 20, color: Get.theme.textTheme.bodyLarge?.color),
                   onPressed: () {
@@ -229,139 +413,175 @@ class Homepage extends GetView<HomepageController> {
               );
             }),
           ),
-          trailing: CupertinoButton(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Icon(
-              controller.layoutType.value == 'grid' 
-                ? CupertinoIcons.square_list 
-                : CupertinoIcons.square_grid_2x2,
-              size: CommonUtils.navIconSize,
-            ),
-            onPressed: () {
-              controller.layoutType.value = controller.layoutType.value == 'grid' ? 'list' : 'grid';
-            },
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 多选入口
+              Obx(
+                () => CupertinoButton(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w),
+                  child: Icon(
+                    controller.isSelectMode.value
+                        ? CupertinoIcons.xmark_circle
+                        : CupertinoIcons.checkmark_circle,
+                    size: CommonUtils.navIconSize,
+                  ),
+                  onPressed: () => controller.toggleSelectMode(),
+                ),
+              ),
+              // 排序入口
+              CupertinoButton(
+                padding: EdgeInsets.symmetric(horizontal: 8.w),
+                child: Icon(
+                  CupertinoIcons.arrow_up_arrow_down,
+                  size: CommonUtils.navIconSize,
+                ),
+                onPressed: () async {
+                  final selected = await ObjectHelper.showSortMenu(
+                    controller.sortType.value,
+                  );
+                  if (selected != null) {
+                    controller.changeSortType(selected);
+                  }
+                },
+              ),
+              // 布局切换
+              CupertinoButton(
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                child: Icon(
+                  controller.layoutType.value == 'grid' 
+                    ? CupertinoIcons.square_list 
+                    : CupertinoIcons.square_grid_2x2,
+                  size: CommonUtils.navIconSize,
+                ),
+                onPressed: () {
+                  controller.layoutType.value = controller.layoutType.value == 'grid' ? 'list' : 'grid';
+                },
+              ),
+            ],
           ),
         ),
         child: SafeArea(
-          child: Obx(() {
-            if (controller.isFirstLoading.isTrue) {
-              print('=== Homepage: Loading state ===');
-              return Center(
-                child: CupertinoActivityIndicator(),
-              );
-            }
-            
-            final fileCount = controller.objects.value.length;
-            final isServerConfigured = controller.isServerConfigured;
-            final currentServer = controller.currentServer;
-            
-            print('=== Homepage: State Check ===');
-            print('Server configured: $isServerConfigured');
-            print('Current server: ${currentServer?.url ?? 'null'}');
-            print('File count: $fileCount');
-            print('Error message: ${controller.errorMessage.value}');
-            print('Current path: ${controller.currentPath.value}');
-            
-            if (!isServerConfigured) {
-              print('=== Homepage: No server configured ===');
-              // 未配置服务器，显示配置提示和背景图片
+          child: Column(
+            children: [
+              // 面包屑路径导航
+              Obx(
+                () => controller.searchQuery.value.isEmpty &&
+                        controller.isServerConfigured &&
+                        controller.objects.value.isNotEmpty
+                    ? _buildBreadcrumb()
+                    : SizedBox.shrink(),
+              ),
+              // 搜索进度
+              Obx(() {
+                if (!controller.isSearching.value) {
+                  return SizedBox.shrink();
+                }
+                return Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(minHeight: 4),
+                        ),
+                      ),
+                      SizedBox(width: 12),
+                      Obx(
+                        () => Text(
+                          '已扫描 ${controller.searchedCount.value} 个目录',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
+                      CupertinoButton(
+                        padding: EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          '取消',
+                          style: TextStyle(color: Get.theme.primaryColor),
+                        ),
+                        onPressed: () => controller.cancelSearch(),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              Expanded(
+                child: Obx(() {
+              if (controller.isFirstLoading.isTrue) {
+                return Center(
+                  child: CupertinoActivityIndicator(),
+                );
+              }
+              final fileCount = controller.objects.value.length;
+              final isServerConfigured = controller.isServerConfigured;
+              
+              
+              if (!isServerConfigured) {
+              // 未配置服务器，显示配置提示
               return Container(
                 padding: EdgeInsets.all(16),
                 color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // 显示背景图片
-                    Container(
-                      margin: EdgeInsets.only(bottom: 32),
-                      child: Assets.images.empty.image(width: 600.r),
-                    ),
-                    Container(
-                      padding: EdgeInsets.all(12),
-                      margin: EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.blue[100],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(CupertinoIcons.info_circle, color: Colors.blue[700]),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              '未配置服务器',
-                              style: TextStyle(color: Colors.blue[700]),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    CupertinoButton(
-                      child: Text('添加服务器'),
-                      onPressed: () async {
-                        print('=== Homepage: Navigating to server settings ===');
-                        // 直接导航到服务器设置页面
-                        await Get.toNamed(Routes.SETTING_SERVER);
-                        // 刷新主页数据
-                        print('=== Homepage: Refreshing data after server settings ===');
-                        controller.getObjectList();
-                      },
-                    ),
-                  ],
+                child: EmptyState(
+                  icon: CupertinoIcons.cloud,
+                  title: '未配置服务器',
+                  description: '请先添加一个 WebDAV 服务器，即可浏览和同步云端文件',
+                  action: CupertinoButton(
+                    child: Text('添加服务器'),
+                    onPressed: () async {
+                      // 直接导航到服务器设置页面
+                      await Get.toNamed(Routes.SETTING_SERVER);
+                      // 刷新主页数据
+                      controller.getObjectList();
+                    },
+                  ),
                 ),
               );
             } else if (fileCount == 0) {
-              print('=== Homepage: Server configured but directory empty ===');
-              print('Server URL: ${currentServer?.url}');
-              // 已配置服务器但目录为空，显示空目录提示
+              // 已配置服务器但目录为空 / 搜索无结果
+              final isSearchResult =
+                  controller.searchQuery.value.isNotEmpty &&
+                      !controller.isSearching.value;
               return Container(
                 padding: EdgeInsets.all(16),
                 color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      margin: EdgeInsets.only(bottom: 32),
-                      child: Assets.images.empty.image(width: 600.r),
-                    ),
-                    Container(
-                      padding: EdgeInsets.all(12),
-                      margin: EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(CupertinoIcons.folder_open, color: Colors.grey[600]),
-                          SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              controller.errorMessage.value.isNotEmpty 
-                                ? controller.errorMessage.value 
-                                : '目录为空',
-                              style: TextStyle(color: Colors.grey[600]),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    CupertinoButton(
-                      child: Text('刷新'),
-                      onPressed: () {
-                        print('=== Homepage: Refreshing file list ===');
-                        controller.getObjectList();
-                      },
-                    ),
-                  ],
+                child: EmptyState(
+                  icon: isSearchResult
+                      ? CupertinoIcons.search
+                      : CupertinoIcons.folder_open,
+                  title: isSearchResult
+                      ? '未找到结果'
+                      : (controller.errorMessage.value.isNotEmpty
+                          ? controller.errorMessage.value
+                          : '目录为空'),
+                  description: isSearchResult
+                      ? '没有找到与“${controller.searchQuery.value}”匹配的文件'
+                      : '当前目录下没有文件或文件夹',
+                  action: isSearchResult
+                      ? null
+                      : CupertinoButton(
+                          child: Text('刷新'),
+                          onPressed: () {
+                            controller.getObjectList();
+                          },
+                        ),
                 ),
               );
             } else {
-              print('=== Homepage: Displaying file list with $fileCount items ===');
               // 显示文件列表
               return controller.layoutType.value == 'grid' ? _buildGridView() : _buildListView();
             }
-          }),
+              }),
+              ),
+              // 多选批量操作栏
+              Obx(() {
+                if (!controller.isSelectMode.value) {
+                  return SizedBox.shrink();
+                }
+                return _buildBatchActionBar();
+              }),
+            ],
+          ),
         ),
       ),
     );
