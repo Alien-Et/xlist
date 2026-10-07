@@ -84,7 +84,9 @@ jobs:
               -dname "CN=XList, OU=Dev, O=XList, L=City, S=State, C=CN" 2>/dev/null
             echo "generated temporary keystore (alias: $ALIAS)"
           fi
-          cat > keystore.properties <<EOF
+          # 注意：Flutter 项目 Gradle rootProject 是 android/ 目录，
+          # keystore.properties 必须生成到 android/ 下才能被 build.gradle.kts 读到
+          cat > android/keystore.properties <<EOF
           storeFile=$RUNNER_TEMP/release-key.jks
           storePassword=$PASS
           keyAlias=$ALIAS
