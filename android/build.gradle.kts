@@ -1,8 +1,12 @@
 allprojects {
     repositories {
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/public") }
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        // 阿里云镜像默认启用（国内构建提速）；CI 等海外环境设置 USE_ALIYUN_MIRROR=false 时走官方仓库
+        val useAliyun = System.getenv("USE_ALIYUN_MIRROR")?.let { it != "false" } ?: true
+        if (useAliyun) {
+            maven { url = uri("https://maven.aliyun.com/repository/google") }
+            maven { url = uri("https://maven.aliyun.com/repository/public") }
+            maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
+        }
         google()
         mavenCentral()
     }

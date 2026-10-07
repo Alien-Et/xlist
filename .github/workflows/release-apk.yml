@@ -14,6 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     # 免费 runner 上全量构建会超 6 小时被取消；限制超时并做提速优化
     timeout-minutes: 150
+    env:
+      # CI 在海外，禁用阿里云镜像走官方仓库（镜像在海外返回 502）
+      USE_ALIYUN_MIRROR: "false"
 
     steps:
       # 检出仓库代码
@@ -21,6 +24,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # 调优 Gradle 内存（CI 机器 7G，R8 需要更多 Metaspace）
+      - name: Tune Gradle memory for CI
+        run: |
+          sed -i 's/-Xmx1536m -XX:MaxMetaspaceSize=384m/-Xmx4G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
+          sed -i 's/-Dkotlin.daemon.jvm.options=-Xmx768m/-Dkotlin.daemon.jvm.options=-Xmx2g/' android/gradle.properties
+          sed -i 's/kotlin.daemon.jvmargs=-Xmx768m/kotlin.daemon.jvmargs=-Xmx2g/' android/gradle.properties
+          grep -oE "Xmx[0-9]+m|MaxMetaspaceSize=[0-9]+m" android/gradle.properties | head -3
 
       # 缓存 Gradle 依赖（第二次起构建大幅提速）
       - name: Cache Gradle
