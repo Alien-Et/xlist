@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart' hide Response;
@@ -38,6 +40,19 @@ class _AddServerBottomSheetState extends State<AddServerBottomSheet> {
     _getServerList();
   }
 
+  /// 构建带证书放行配置的 Dio（自签/内网证书的 WebDAV 服务器）
+  Dio _buildDio() {
+    final dio = Dio();
+    dio.httpClientAdapter = IOHttpClientAdapter(createHttpClient: () {
+      final client = HttpClient();
+      if (Get.find<PreferencesStorage>().ignoreSslVerify.val) {
+        client.badCertificateCallback = (cert, host, port) => true;
+      }
+      return client;
+    });
+    return dio;
+  }
+
   void _getServerList() async {
     _serverList = await DatabaseService.to.database.serverDao.findAllServer();
     setState(() {});
@@ -50,7 +65,7 @@ class _AddServerBottomSheetState extends State<AddServerBottomSheet> {
 
     if (!url.startsWith('http://') && !url.startsWith('https://')) {
       try {
-        await Dio().get('https://$url/');
+        await _buildDio().get('https://$url/');
         url = 'https://$url';
       } catch (e) {
         url = 'http://$url';
@@ -59,7 +74,7 @@ class _AddServerBottomSheetState extends State<AddServerBottomSheet> {
     }
 
     try {
-      final response = await Dio().get(
+      final response = await _buildDio().get(
         url,
         options: Options(
           headers: {
@@ -110,7 +125,7 @@ class _AddServerBottomSheetState extends State<AddServerBottomSheet> {
 
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         try {
-          await Dio().post('https://$url/api/auth/login', data: {'username': username, 'password': password});
+          await _buildDio().post('https://$url/api/auth/login', data: {'username': username, 'password': password});
           url = 'https://$url';
         } catch (e) {
           url = 'http://$url';
@@ -127,7 +142,7 @@ class _AddServerBottomSheetState extends State<AddServerBottomSheet> {
 
         final authHeader = 'Basic ${base64Encode(utf8.encode('$username:$password'))}';
 
-        final response = await Dio().request(
+        final response = await _buildDio().request(
           webDavUrl,
           options: Options(
             method: 'PROPFIND',

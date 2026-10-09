@@ -147,6 +147,20 @@ class SettingPage extends GetView<SettingController> {
                       onTap: () => Get.toNamed(Routes.SETTING_SERVER),
                     ),
                     _buildListTile(
+                      title: '忽略 SSL 证书校验',
+                      icon: Icons.enhanced_encryption_outlined,
+                      trailing: Obx(
+                        () => CupertinoSwitch(
+                          value: controller.ignoreSslVerify.value,
+                          onChanged: (value) {
+                            controller.updateSetting('ignoreSslVerify', value);
+                            SmartDialog.showToast(
+                                value ? '已开启：忽略服务器证书校验' : '已关闭：严格校验证书');
+                          },
+                        ),
+                      ),
+                    ),
+                    _buildListTile(
                       title: 'setting_theme'.tr,
                       icon: Icons.color_lens,
                       additionalInfo: controller.themeModeText.value,

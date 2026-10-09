@@ -2,8 +2,6 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// 悬浮导航栏条目
 class FloatingNavItem {
@@ -20,8 +18,8 @@ class FloatingNavItem {
   });
 }
 
-/// 底部悬浮圆角矩形导航栏
-/// 半透明毛玻璃背景 + 大圆角 + 阴影，悬浮于内容之上
+/// 液态玻璃悬浮圆角导航栏
+/// 高透明毛玻璃 + 顶部高光渐变 + 渐变描边 + 柔和阴影 + 图标胶囊底
 class FloatingNavBar extends StatelessWidget {
   final List<FloatingNavItem> items;
   final double? height;
@@ -34,61 +32,109 @@ class FloatingNavBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final navHeight = height ?? (Get.width < 400 ? 120.h : 140.h);
     final isDark = Get.isDarkMode;
+    final navHeight = height ?? (Get.width < 400 ? 88.0 : 96.0);
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 40.w),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(50.r),
+        borderRadius: BorderRadius.circular(34),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
           child: Container(
             height: navHeight,
             decoration: BoxDecoration(
-              color: (isDark ? Colors.black : Colors.white).withOpacity(0.82),
-              borderRadius: BorderRadius.circular(50.r),
+              // 液态玻璃：半透明渐变 + 顶部高光
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: isDark
+                    ? const [Color(0x59FFFFFF), Color(0x21FFFFFF)]
+                    : const [Color(0xB8FFFFFF), Color(0x73FFFFFF)],
+              ),
+              borderRadius: BorderRadius.circular(34),
+              // 玻璃描边
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withOpacity(0.12)
-                    : Colors.black.withOpacity(0.06),
+                    ? const Color(0x40FFFFFF)
+                    : const Color(0xE6FFFFFF),
+                width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.15),
-                  blurRadius: 24,
-                  offset: const Offset(0, 8),
+                  color: Colors.black.withValues(alpha: 0.16),
+                  blurRadius: 28,
+                  offset: const Offset(0, 10),
                 ),
               ],
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 for (final item in items)
                   Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(30),
                       onTap: item.onTap,
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            item.icon,
-                            size: Get.width < 400 ? 44.sp : 56.sp,
-                            color: item.active
-                                ? Get.theme.primaryColor
-                                : (isDark ? Colors.white70 : Colors.black54),
+                          // 图标：圆形胶囊渐变底 + 大图标
+                          Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: item.active
+                                    ? [
+                                        Get.theme.primaryColor
+                                            .withValues(alpha: 0.35),
+                                        Get.theme.primaryColor
+                                            .withValues(alpha: 0.10),
+                                      ]
+                                    : isDark
+                                        ? const [
+                                            Color(0x33FFFFFF),
+                                            Color(0x0DFFFFFF),
+                                          ]
+                                        : [
+                                            Colors.white
+                                                .withValues(alpha: 0.80),
+                                            Colors.white
+                                                .withValues(alpha: 0.30),
+                                          ],
+                              ),
+                              border: Border.all(
+                                color: item.active
+                                    ? Get.theme.primaryColor
+                                        .withValues(alpha: 0.55)
+                                    : isDark
+                                        ? const Color(0x26FFFFFF)
+                                        : Colors.white
+                                            .withValues(alpha: 0.95),
+                              ),
+                            ),
+                            child: Icon(
+                              item.icon,
+                              size: 27,
+                              color: item.active
+                                  ? Get.theme.primaryColor
+                                  : (isDark ? Colors.white : Colors.black87),
+                            ),
                           ),
-                          SizedBox(height: 4.h),
+                          const SizedBox(height: 5),
                           Text(
                             item.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Get.textTheme.bodySmall?.copyWith(
-                              fontSize: 20.sp,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
                               color: item.active
                                   ? Get.theme.primaryColor
-                                  : (isDark ? Colors.white60 : Colors.black45),
+                                  : (isDark ? Colors.white : Colors.black87),
                             ),
                           ),
                         ],

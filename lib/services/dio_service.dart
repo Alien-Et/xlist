@@ -44,8 +44,10 @@ class DioService extends GetxService {
 
       // HttpClient
       HttpClient httpClient = HttpClient(context: sc);
-      // 仅调试模式放宽证书校验，Release 模式使用系统严格校验，防止中间人攻击
-      if (kDebugMode) {
+      // 放宽证书校验：调试模式、或用户在设置中开启"忽略 SSL 证书校验"
+      // （自签证书/内网服务器常见，如群晖、路由、内网穿透）
+      final ignoreSsl = Get.find<PreferencesStorage>().ignoreSslVerify.val;
+      if (kDebugMode || ignoreSsl) {
         httpClient.badCertificateCallback =
             (X509Certificate cert, String host, int port) => true;
       }

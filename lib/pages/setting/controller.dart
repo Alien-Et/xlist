@@ -24,6 +24,9 @@ class SettingController extends GetxController {
   // 显示预览图
   late final isShowPreview = false.obs;
 
+  // 忽略 SSL 证书校验（自签/内网证书服务器）
+  late final ignoreSslVerify = false.obs;
+
   // 主题
   final themeModeText = ''.obs;
   
@@ -49,6 +52,7 @@ class SettingController extends GetxController {
     isBackgroundPlay.value = coreService.preferencesStorage.isBackgroundPlay.val ?? false;
     isHardwareDecode.value = coreService.preferencesStorage.isHardwareDecode.val ?? false;
     isShowPreview.value = coreService.preferencesStorage.isShowPreview.val ?? true;
+    ignoreSslVerify.value = coreService.preferencesStorage.ignoreSslVerify.val ?? true;
 
     // 获取当前主题模式
     themeModeText.value =
@@ -95,6 +99,10 @@ class SettingController extends GetxController {
       case 'isShowPreview':
         isShowPreview.value = value;
         coreService.preferencesStorage.isShowPreview.val = value;
+        break;
+      case 'ignoreSslVerify':
+        ignoreSslVerify.value = value;
+        coreService.preferencesStorage.ignoreSslVerify.val = value;
         break;
     }
   }

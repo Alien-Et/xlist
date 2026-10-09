@@ -926,14 +926,37 @@ class CoreService extends GetxService {
        relativeHref = relativeHref.substring(serverUrl.length);
      }
      
+     // href 可能是相对服务器根的路径（含 serverUrl 的路径前缀，如 /dav/115/）
+     // 需要去掉该前缀，否则会把"当前目录自身"误判为同名子目录
+     if (!relativeHref.startsWith('http://') && !relativeHref.startsWith('https://')) {
+       try {
+         final serverPath = Uri.parse(serverUrl).path;
+         if (serverPath.isNotEmpty &&
+             serverPath != '/' &&
+             (relativeHref == serverPath ||
+                 relativeHref.startsWith('$serverPath/'))) {
+           relativeHref = relativeHref.substring(serverPath.length);
+         }
+       } catch (_) {}
+     }
+     
      // 确保路径以/开头
      if (!relativeHref.startsWith('/')) {
        relativeHref = '/$relativeHref';
      }
      
-     // 清理路径，移除末尾的/
+     // 统一 URL 解码后再比较（href 通常为 URL 编码，path 为已解码，
+     // 中文目录名不解码会导致目录自身被误判为同名子目录）
+     String cleanRelativeHref = relativeHref;
+     try {
+       cleanRelativeHref = Uri.decodeComponent(cleanRelativeHref);
+     } catch (_) {}
+     cleanRelativeHref = cleanRelativeHref.endsWith('/')
+         ? cleanRelativeHref.substring(0, cleanRelativeHref.length - 1)
+         : cleanRelativeHref;
+
+     // 当前访问路径（已解码）
      final cleanPath = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
-     final cleanRelativeHref = relativeHref.endsWith('/') ? relativeHref.substring(0, relativeHref.length - 1) : relativeHref;
      
      // 分割路径为部分
      final pathParts = cleanPath.split('/').where((part) => part.isNotEmpty).toList();

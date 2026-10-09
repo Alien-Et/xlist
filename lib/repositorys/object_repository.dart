@@ -29,7 +29,16 @@ class ObjectRepository extends Repository {
     if (path != '/' && path.isNotEmpty) {
       String cleanPath = path.startsWith('/') ? path.substring(1) : path;
       cleanPath = cleanPath.endsWith('/') ? cleanPath.substring(0, cleanPath.length - 1) : cleanPath;
-      webDavUrl += cleanPath;
+      // 逐段 URL 编码（中文/空格目录名；已编码段先解码再编码，避免双重编码）
+      final segments = cleanPath.split('/').map((seg) {
+        try {
+          final decoded = Uri.decodeComponent(seg);
+          return Uri.encodeComponent(decoded);
+        } catch (_) {
+          return Uri.encodeComponent(seg);
+        }
+      }).join('/');
+      webDavUrl += segments;
     }
     return webDavUrl;
   }

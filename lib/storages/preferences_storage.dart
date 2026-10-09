@@ -19,6 +19,9 @@ class PreferencesStorage {
 
   final isShowPreview = true.val('isShowPreview', getBox: _prefBox);
 
+  /// 是否忽略 WebDAV 服务器 SSL 证书校验（自签/内网证书场景默认为 true）
+  final ignoreSslVerify = true.val('ignoreSslVerify', getBox: _prefBox);
+
   final imageSupportTypes =
       kSupportPreviewImageTypes.val('imageSupportTypes', getBox: _prefBox);
 
