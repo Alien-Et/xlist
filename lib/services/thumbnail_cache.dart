@@ -1,12 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 
 import 'package:xlist/models/index.dart';
 import 'package:xlist/helper/index.dart';
@@ -143,70 +141,10 @@ class ThumbnailCache {
     return null;
   }
 
+  /// 视频缩略图：WebDAV 无缩略图接口，下载整个视频文件生成帧成本过高，
+  /// 这里不下载视频文件，返回 null 由调用方回退到类型图标。
   Future<String?> _generateVideoThumbnail(String videoUrl, Map<String, String>? headers) async {
-    try {
-      final cacheKey = _generateCacheKey(videoUrl, headers);
-      final cacheFile = await _getCacheFile(cacheKey);
-      
-      if (cacheFile != null && await _isCacheValid(cacheFile)) {
-        _memoryCache[cacheKey] = cacheFile.path;
-        try {
-          _cacheTimestamps[cacheKey] = await cacheFile.lastModified();
-        } catch (e) {
-          _cacheTimestamps[cacheKey] = DateTime.now();
-        }
-        return cacheFile.path;
-      }
-
-      final response = await _dio.get(
-        videoUrl,
-        options: Options(
-          responseType: ResponseType.bytes,
-          headers: headers,
-        ),
-      );
-
-      if (response.statusCode == 200 && response.data != null) {
-        final bytes = response.data as Uint8List;
-        
-        final thumbnailBytes = await compute(_extractVideoThumbnail, bytes);
-        
-        if (thumbnailBytes != null && cacheFile != null) {
-          await cacheFile.writeAsBytes(thumbnailBytes);
-          
-          _memoryCache[cacheKey] = cacheFile.path;
-          _cacheTimestamps[cacheKey] = DateTime.now();
-          
-          await _cleanupMemoryCache();
-          
-          return cacheFile.path;
-        }
-      }
-    } catch (e) {
-      print('Error generating video thumbnail: $e');
-    }
     return null;
-  }
-
-  static Uint8List? _extractVideoThumbnail(Uint8List videoBytes) {
-    try {
-      final random = Random();
-      final thumbnailSize = 320;
-      final pixelCount = thumbnailSize * thumbnailSize;
-      
-      final bytes = Uint8List(pixelCount * 4);
-      for (var i = 0; i < pixelCount; i++) {
-        final offset = i * 4;
-        bytes[offset] = random.nextInt(100);
-        bytes[offset + 1] = random.nextInt(100);
-        bytes[offset + 2] = random.nextInt(100);
-        bytes[offset + 3] = 255;
-      }
-      
-      return bytes;
-    } catch (e) {
-      return null;
-    }
   }
 
   Future<String?> getThumbnail({
@@ -259,10 +197,12 @@ class ThumbnailCache {
   }) async {
     if (object.thumb != null && object.thumb!.isNotEmpty) {
       final isVideo = PreviewHelper.isVideo(object.name ?? '');
+      // 视频不下载整个文件（成本过高），返回 null 回退到类型图标
+      if (isVideo) return null;
       return getThumbnail(
         url: object.thumb!,
         headers: headers,
-        isVideo: isVideo,
+        isVideo: false,
       );
     }
     return null;

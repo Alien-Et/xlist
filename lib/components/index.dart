@@ -1,6 +1,7 @@
 export 'toast_component.dart';
 export 'search_component.dart';
 export 'empty_state.dart';
+export 'floating_nav_bar/floating_nav_bar.dart';
 
 
 export 'object_list/object_list_component.dart';

@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:get/get.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
@@ -12,12 +11,12 @@ import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:xlist/models/index.dart';
 import 'package:xlist/helper/index.dart';
 import 'package:xlist/common/index.dart';
+import 'package:xlist/common/logger.dart';
 import 'package:xlist/storages/index.dart';
 import 'package:xlist/services/index.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/repositorys/index.dart';
 import 'package:xlist/repositorys/user_repository.dart';
-// import 'package:xlist/helper/fijk_helper.dart';
 import 'package:xlist/database/entity/index.dart';
 
 class AudioPlayerController extends GetxController
@@ -29,6 +28,7 @@ class AudioPlayerController extends GetxController
   final httpHeaders = Map<String, String>().obs;
   final serverId = Get.find<UserStorage>().serverId.value.obs;
   final userInfo = UserModel().obs; // 用户信息
+  final errorMessage = ''.obs; // 播放错误信息
 
   // 获取参数
   String path = Get.arguments['path'] ?? '';
@@ -43,7 +43,18 @@ class AudioPlayerController extends GetxController
   final currentName = ''.obs;
   final currentIndex = 0.obs;
   late VideoPlayerController player; // 替换 FijkPlayer
-  final audioHandler = PlayerNotificationService.to.audioHandler;
+
+  /// 通知栏音频处理器（容错获取：PlayerNotificationService 未初始化时为 null，
+  /// 仅降级通知栏功能，不影响正常播放）
+  PlayerNotificationHandler? get audioHandler {
+    try {
+      if (Get.isRegistered<PlayerNotificationService>()) {
+        return PlayerNotificationService.to.audioHandler;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   late TabController tabController;
 
   double seekPos = -1.0.obs;
@@ -71,19 +82,41 @@ class AudioPlayerController extends GetxController
       isPlaylist.value = tabController.index == 1;
     });
 
-    // 过滤非音频
-    objects = objects.where((o) => PreviewHelper.isAudio(o.name!)).toList();
+    // 过滤非音频；若列表为空（从文件详情单独进入），用当前文件构造单曲列表
+    final audioObjects =
+        objects.where((o) => PreviewHelper.isAudio(o.name!)).toList();
+    if (audioObjects.isEmpty && objects.isNotEmpty) {
+      // 自定义扩展名未识别为音频时保留原列表，避免播放列表为空
+      objects = List<ObjectModel>.from(objects);
+    } else {
+      objects = audioObjects;
+    }
+    if (objects.isEmpty) {
+      objects = [
+        ObjectModel()
+          ..name = name
+          ..type = 2,
+      ];
+    }
     userInfo.value = UserModel();
 
     // 当前播放文件名
     currentName.value = name;
-    currentIndex.value = objects.indexWhere((o) => o.name == name); // 当前播放文件下标
+    currentIndex.value = objects.indexWhere((o) => o.name == name);
+    if (currentIndex.value < 0) currentIndex.value = 0;
 
-    // PlayerNotificationService
-    audioHandler.initializeStreamController(player, objects.length > 1, false);
-    audioHandler.playbackState.addStream(audioHandler.streamController.stream);
-    audioHandler.setVideoFunctions(
-        player.play, player.pause, (position) => player.seekTo(Duration(milliseconds: position)), player.dispose);
+    // PlayerNotificationService（容错：通知栏不可用时不影响播放）
+    try {
+      final handler = audioHandler;
+      if (handler != null) {
+        handler.initializeStreamController(player, objects.length > 1, false);
+        handler.playbackState.addStream(handler.streamController.stream);
+        handler.setVideoFunctions(player.play, player.pause,
+            (position) => player.seekTo(Duration(milliseconds: position)), player.dispose);
+      }
+    } catch (e) {
+      Logger.w('audio handler init failed: $e');
+    }
 
     // 获取文件信息
     if (file.isEmpty) {
@@ -109,32 +142,8 @@ class AudioPlayerController extends GetxController
     await updateProgress();
 
     // 初始化播放器
-    player = VideoPlayerController.networkUrl(
-      Uri.parse(object.value.rawUrl ?? ''),
-      httpHeaders: httpHeaders.cast<String, String>(),
-    );
-    await player.initialize();
-    await player.seekTo(currentPos.value);
-    await player.setVolume(1.0); // 默认音量
-    await player.play(); // 替换 autoPlay: true
-
-    // Listener
-    player.addListener(_videoPlayerListener); // 替换 _fijkValueListener
-
-    // 监听播放进度 (这些可以移除，因为 addListener 已经处理了)
-    // _currentPosSubs = player.onCurrentPosUpdate.listen((v) {
-    //   currentPos.value = v;
-    // });
-
-    // _bufferPosSubs = player.onBufferPosUpdate.listen((v) {
-    //   bufferPos.value = v;
-    // });
-
-    // _bufferingSubs = player.onBufferStateUpdate.listen((v) {
-    //   Future.delayed(Duration(milliseconds: 1000), () {
-    //     audioHandler.updatePlaybackState(player);
-    //   });
-    // });
+    await _initPlayer();
+    if (errorMessage.value.isNotEmpty) return;
 
     // 加入最近浏览
     await CommonUtils.addRecent(object.value, path, name);
@@ -147,6 +156,12 @@ class AudioPlayerController extends GetxController
   void _videoPlayerListener() async { // 替换 _fijkValueListener
     final value = player.value;
     isPlaying.value = value.isPlaying;
+
+    // 播放出错：显示错误信息，不崩溃
+    if (value.hasError) {
+      errorMessage.value = '播放出错：${value.errorDescription ?? "无法解码或网络中断"}';
+      isPlaying.value = false;
+    }
 
     // 获取视频的总长度
     if (value.duration != duration.value) {
@@ -224,8 +239,44 @@ class AudioPlayerController extends GetxController
       artHeaders: httpHeaders,
     );
 
-    // Add media
-    audioHandler.mediaItem.add(_mediaItem);
+    // Add media（容错：通知栏不可用时跳过）
+    try {
+      audioHandler?.mediaItem.add(_mediaItem);
+    } catch (_) {}
+  }
+
+  /// 初始化播放器（供首次打开与失败重试复用）
+  Future<void> _initPlayer() async {
+    errorMessage.value = '';
+    player = VideoPlayerController.networkUrl(
+      Uri.parse(object.value.rawUrl ?? ''),
+      httpHeaders: httpHeaders.cast<String, String>(),
+    );
+    // 先挂监听再初始化，避免错过播放状态
+    player.addListener(_videoPlayerListener); // 替换 _fijkValueListener
+    try {
+      await player.initialize();
+    } catch (e) {
+      Logger.e('Audio player initialize failed: $e');
+      errorMessage.value = '播放初始化失败，请检查文件是否可访问：$e';
+      SmartDialog.showToast('播放初始化失败，请检查文件是否可访问');
+      isLoading.value = false;
+      return;
+    }
+    await player.seekTo(currentPos.value);
+    await player.setVolume(1.0); // 默认音量
+    await player.play(); // 替换 autoPlay: true
+  }
+
+  /// 播放失败后重试
+  Future<void> retry() async {
+    isLoading.value = true;
+    await updateProgress();
+    await _initPlayer();
+    if (errorMessage.value.isEmpty) {
+      await CommonUtils.addRecent(object.value, path, name);
+    }
+    isLoading.value = false;
   }
 
   /// 切换播放列表文件
@@ -252,12 +303,22 @@ class AudioPlayerController extends GetxController
 
     // 重置播放器信息
     SmartDialog.dismiss();
-    await player.dispose(); // 替换 player.reset()
+    try {
+      await player.dispose(); // 替换 player.reset()
+    } catch (_) {}
     player = VideoPlayerController.networkUrl(
       Uri.parse(object.value.rawUrl ?? ''),
       httpHeaders: httpHeaders.cast<String, String>(),
     );
-    await player.initialize();
+    player.addListener(_videoPlayerListener);
+    try {
+      await player.initialize();
+    } catch (e) {
+      errorMessage.value = '播放初始化失败，请检查文件是否可访问：$e';
+      SmartDialog.showToast('播放初始化失败，请检查文件是否可访问');
+      isLoading.value = false;
+      return;
+    }
     currentPos.value = Duration.zero;
     await updateProgress(); // 更新播放进度
 
@@ -404,10 +465,19 @@ class AudioPlayerController extends GetxController
     _currentPosSubs?.cancel(); // 这个可以移除
     _bufferPosSubs?.cancel(); // 这个可以移除
     _bufferingSubs?.cancel(); // 这个可以移除
-    audioHandler.streamController.add(PlaybackState());
-    audioHandler.streamController.close();
-    player.removeListener(_videoPlayerListener); // 替换 _fijkValueListener
-    player.dispose(); // 替换 player.release()
+    // 通知栏流关闭（容错）
+    try {
+      final handler = audioHandler;
+      if (handler != null) {
+        handler.streamController.add(PlaybackState());
+        handler.streamController.close();
+      }
+    } catch (_) {}
+    // 播放器释放（容错：初始化失败时 player 未完成创建）
+    try {
+      player.removeListener(_videoPlayerListener); // 替换 _fijkValueListener
+      player.dispose(); // 替换 player.release()
+    } catch (_) {}
 
     DownloadService.to.unbindBackgroundIsolate();
   }

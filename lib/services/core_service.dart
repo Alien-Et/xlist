@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:get/get.dart';
+import 'package:get/get.dart' hide Response;
 import 'package:dio/dio.dart';
 import 'package:xml/xml.dart';
 import 'package:xlist/common/logger.dart';
@@ -469,7 +469,12 @@ class CoreService extends GetxService {
         
         // 只有当cleanPath不为空时才添加
         if (cleanPath.isNotEmpty) {
-          webDavUrl += cleanPath;
+          // 对路径每一段进行 URL 编码，避免中文/空格等非 ASCII 字符导致请求失败
+          final encodedPath = cleanPath
+              .split('/')
+              .map((seg) => Uri.encodeComponent(seg))
+              .join('/');
+          webDavUrl += encodedPath;
           // 确保路径URL以/结尾
           if (!webDavUrl.endsWith('/')) {
             webDavUrl += '/';
@@ -526,64 +531,58 @@ class CoreService extends GetxService {
         Logger.w('HEAD request failed: $headError');
       }
       
-      // 尝试使用标准的WebDAV PROPFIND请求
+      // 尝试使用标准的WebDAV PROPFIND请求（网络异常自动重试一次）
+      Response<dynamic>? propfindResponse;
       try {
-        Logger.d('=== Sending WebDAV PROPFIND request ===');
-        
-        // 构建完整的PROPFIND请求 - 使用标准的XML格式
-        final response = await dioService.dio.request(
-          webDavUrl,
-          options: Options(
-            method: 'PROPFIND',
-            headers: {
-              'Depth': '1',
-              'Authorization': authHeader,
-              'Content-Type': 'application/xml',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            },
-            responseType: ResponseType.plain,
-            validateStatus: (status) {
-              return status! < 500;
-            },
-            // 标准的超时设置
-            connectTimeout: Duration(seconds: 30),
-            receiveTimeout: Duration(seconds: 60),
-          ),
-          // 标准的PROPFIND请求体，包含更多属性
-          data: '''<?xml version="1.0" encoding="utf-8"?>
-<propfind xmlns="DAV:">
-  <prop>
-    <resourcetype/>
-    <getcontentlength/>
-    <getlastmodified/>
-    <getcontenttype/>
-  </prop>
-</propfind>''',
-        );
-        
+        propfindResponse = await _sendPropfind(webDavUrl, authHeader, 1);
+      } catch (e) {
+        Logger.w('PROPFIND request failed: $e');
+      }
+      if (propfindResponse == null) {
+        // 首次网络级失败：短暂等待后重试一次（部分服务器握手慢 / 偶发丢包）
+        try {
+          await Future.delayed(const Duration(milliseconds: 400));
+          propfindResponse = await _sendPropfind(webDavUrl, authHeader, 1);
+        } catch (e) {
+          Logger.w('PROPFIND retry failed: $e');
+        }
+      }
+
+      if (propfindResponse != null) {
+        final response = propfindResponse!;
         Logger.d('=== Got WebDAV response ===');
         Logger.d('Status code: ${response.statusCode}');
         Logger.d('Status message: ${response.statusMessage}');
         Logger.d('Response length: ${response.data?.length ?? 0}');
-        
-        // 打印响应头（不含完整响应体，避免敏感信息泄露）
-        Logger.d('Response headers: ${response.headers}');
-        
+
         // 检查响应状态
         if (response.statusCode == 207) {
           // 成功，解析WebDAV响应
           final responseData = response.data?.toString() ?? '';
           Logger.d('=== WebDAV request successful ===');
           Logger.d('Response data length: ${responseData.length}');
-          
+
           final objects = _parseWebDAVResponse(responseData, path, serverUrl);
-          currentObjects.value = objects;
-          Logger.d('Found ${objects.length} files/folders');
-          for (final obj in objects) {
-            Logger.d('  - ${obj.isDir ?? false ? 'DIR' : 'FILE'}: ${obj.name} (${obj.size ?? 0} bytes)');
+          if (objects.isNotEmpty) {
+            currentObjects.value = objects;
+            Logger.d('Found ${objects.length} files/folders');
+            for (final obj in objects) {
+              Logger.d('  - ${obj.isDir ?? false ? 'DIR' : 'FILE'}: ${obj.name} (${obj.size ?? 0} bytes)');
+            }
+            StepLogger.end('获取WebDAV文件列表', context: 'WebDAV', success: true);
+            return objects;
           }
-          StepLogger.end('获取WebDAV文件列表', context: 'WebDAV', success: true);
-          return objects;
+          // 207 但解析为空：可能是目录确实为空，也可能是服务器返回了非标准 XML。
+          // 先尝试备选方法（HTML 目录列表等），仍为空则视为空目录，不误报"连接失败"。
+          Logger.d('207 with empty parse result, trying alternative methods');
+          final altObjects =
+              await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
+          if (altObjects.isNotEmpty) {
+            currentObjects.value = altObjects;
+            return altObjects;
+          }
+          currentObjects.value = [];
+          return [];
         } else if (response.statusCode == 401 || response.statusCode == 403) {
           // 认证错误
           final error = WebDAVError(
@@ -625,36 +624,34 @@ class CoreService extends GetxService {
           currentObjects.value = [];
           return [];
         }
-      } catch (e) {
-        Logger.e('Error sending PROPFIND request: $e');
-        
-        // 尝试使用OPTIONS方法检测服务器支持的方法
-        try {
-          Logger.d('=== Trying OPTIONS method to detect server capabilities ===');
-          final optionsResponse = await dioService.dio.request(
-            webDavUrl,
-            options: Options(
-              method: 'OPTIONS',
-              headers: {
-                'Authorization': authHeader,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-              },
-              validateStatus: (status) {
-                return status! < 500;
-              },
-            ),
-          );
-          
-          Logger.d('OPTIONS response status: ${optionsResponse.statusCode}');
-          Logger.d('Allow headers: ${optionsResponse.headers['allow']}');
-          Logger.d('DAV headers: ${optionsResponse.headers['dav']}');
-        } catch (optionsError) {
-          Logger.w('Error sending OPTIONS request: $optionsError');
-        }
-        
-        // 尝试使用GET方法作为最后的备选
-        return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
       }
+
+      // PROPFIND 网络级失败：尝试使用OPTIONS方法检测服务器支持的方法
+      try {
+        Logger.d('=== Trying OPTIONS method to detect server capabilities ===');
+        final optionsResponse = await dioService.dio.request(
+          webDavUrl,
+          options: Options(
+            method: 'OPTIONS',
+            headers: {
+              'Authorization': authHeader,
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            },
+            validateStatus: (status) {
+              return status! < 500;
+            },
+          ),
+        );
+
+        Logger.d('OPTIONS response status: ${optionsResponse.statusCode}');
+        Logger.d('Allow headers: ${optionsResponse.headers['allow']}');
+        Logger.d('DAV headers: ${optionsResponse.headers['dav']}');
+      } catch (optionsError) {
+        Logger.w('Error sending OPTIONS request: $optionsError');
+      }
+
+      // 尝试使用GET方法作为最后的备选
+      return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
     } on DioError catch (e) {
       Logger.e('Network error in WebDAV request: $e');
       Logger.e('Dio error type: ${e.type}');
@@ -786,6 +783,45 @@ class CoreService extends GetxService {
   }
 
   // 解析WebDAV响应
+  // 发送标准 WebDAV PROPFIND 请求（统一封装，失败返回 null 由调用方决定重试/备选）
+  Future<Response<dynamic>?> _sendPropfind(String url, String authHeader, int depth) async {
+    try {
+      return await dioService.dio.request(
+        url,
+        options: Options(
+          method: 'PROPFIND',
+          headers: {
+            'Depth': '$depth',
+            'Authorization': authHeader,
+            'Content-Type': 'application/xml',
+            'Accept': 'application/xml, text/xml;q=0.9, */*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          },
+          responseType: ResponseType.plain,
+          validateStatus: (status) {
+            return status! < 500;
+          },
+          // 标准的超时设置
+          connectTimeout: Duration(seconds: 30),
+          receiveTimeout: Duration(seconds: 60),
+        ),
+        // 标准的PROPFIND请求体，包含更多属性
+        data: '''<?xml version="1.0" encoding="utf-8"?>
+<propfind xmlns="DAV:">
+  <prop>
+    <resourcetype/>
+    <getcontentlength/>
+    <getlastmodified/>
+    <getcontenttype/>
+  </prop>
+</propfind>''',
+      );
+    } catch (e) {
+      Logger.w('_sendPropfind error: $e');
+      return null;
+    }
+  }
+
   List<ObjectModel> _parseWebDAVResponse(String response, String path, String serverUrl) {
     final objects = <ObjectModel>[];
     
@@ -1205,7 +1241,7 @@ class CoreService extends GetxService {
     Logger.e('All alternative methods failed');
     final error = WebDAVError(
       WebDAVErrorType.NETWORK_ERROR,
-      'Failed to connect to WebDAV server. Please check your network connection and server address.',
+      '无法连接 WebDAV 服务器：PROPFIND/GET 均失败。请检查网络连接、服务器地址（含协议头 https://）与登录账号，必要时在设置中重新测试连接。',
     );
     onError?.call(error);
     errorMessage.value = error.message;

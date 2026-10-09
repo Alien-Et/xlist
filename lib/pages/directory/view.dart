@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:pull_down_button/pull_down_button.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
@@ -32,66 +31,6 @@ class DirectoryPage extends GetView<DirectoryController> {
     Get.put<DirectoryController>(DirectoryController(), tag: tag);
   }
 
-  /// 构建下拉菜单
-  Widget _buildPullDownButton() {
-    List<PullDownMenuEntry> items = [];
-
-    // 新建文件夹
-    if (controller.userInfo.value.permission != null &&
-        PermissionHelper.canWrite(controller.userInfo.value)) {
-      items.addAll([
-        PullDownMenuItem(
-          title: 'pull_down_new_folder'.tr,
-          icon: CupertinoIcons.folder,
-          onTap: () => ObjectHelper.mkdir(
-            path: controller.path,
-            source: PageSource.DIRECTORY,
-            pageTag: tag ?? '',
-          ),
-        ),
-        PullDownMenuDivider.large(),
-      ]);
-    }
-
-    // 排序
-    items.addAll([
-      PullDownMenuItem(
-        title: '排序',
-        icon: CupertinoIcons.arrow_up_arrow_down,
-        onTap: () async {
-          final selected = await ObjectHelper.showSortMenu(
-            controller.sortType.value,
-          );
-          if (selected != null) {
-            controller.changeSortType(selected);
-          }
-        },
-      ),
-    ]);
-
-    // 刷新
-    items.addAll([
-      PullDownMenuItem(
-        title: 'pull_down_refresh'.tr,
-        icon: CupertinoIcons.refresh,
-        onTap: () async => await controller.getDirectoryList(),
-      ),
-    ]);
-
-    return PullDownButton(
-      itemBuilder: (context) => items,
-      buttonBuilder: (context, showMenu) => CupertinoButton(
-        onPressed: showMenu,
-        padding: EdgeInsets.zero,
-        alignment: Alignment.centerRight,
-        child: Icon(
-          CupertinoIcons.ellipsis_circle,
-          size: CommonUtils.navIconSize,
-        ),
-      ),
-    );
-  }
-
   // NavigationBar
   CupertinoNavigationBar _buildNavigationBar() {
     return CupertinoNavigationBar(
@@ -114,7 +53,7 @@ class DirectoryPage extends GetView<DirectoryController> {
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Container(
-        width: 360.w,
+        width: 240.w,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -123,39 +62,7 @@ class DirectoryPage extends GetView<DirectoryController> {
               child: Icon(CupertinoIcons.download_circle),
               onPressed: () => Get.toNamed(Routes.SETTING_DOWNLOAD),
             ),
-            // 多选模式切换
-            Obx(
-              () => CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: Icon(
-                  controller.isSelectMode.value
-                      ? CupertinoIcons.xmark_circle
-                      : CupertinoIcons.checkmark_circle,
-                  size: CommonUtils.navIconSize,
-                ),
-                onPressed: () => controller.toggleSelectMode(),
-              ),
-            ),
-            // 视图切换: 列表 / 网格
-            Obx(
-              () => CupertinoButton(
-                padding: EdgeInsets.zero,
-                child: Icon(
-                  controller.layoutType.value == 'grid'
-                      ? CupertinoIcons.square_list
-                      : CupertinoIcons.square_grid_2x2,
-                  size: CommonUtils.navIconSize,
-                ),
-                onPressed: () {
-                  controller.layoutType.value =
-                      controller.layoutType.value == 'grid'
-                          ? 'list'
-                          : 'grid';
-                },
-              ),
-            ),
-            Obx(() => _buildPullDownButton()),
-            SizedBox(width: 15.w),
+            SizedBox(width: 30.w),
             // 移动/复制模式下的直达按钮（仅当有源对象时显示）
             if (controller.srcObject.name != null &&
                 controller.srcObject.name!.isNotEmpty)
@@ -362,6 +269,8 @@ class DirectoryPage extends GetView<DirectoryController> {
           ),
         ),
         FooterLocator.sliver(),
+        // 底部留白，避免悬浮导航栏遮挡最后一行
+        SliverToBoxAdapter(child: SizedBox(height: 180.h)),
       ],
     );
   }
@@ -372,38 +281,110 @@ class DirectoryPage extends GetView<DirectoryController> {
       navigationBar: _buildNavigationBar(),
       backgroundColor: Get.theme.scaffoldBackgroundColor,
       child: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            Expanded(
-              child: EasyRefresh(
-                controller: controller.easyRefreshController,
-                header: CupertinoHeader(
-                    position: IndicatorPosition.locator, safeArea: false),
-                footer: CupertinoFooter(position: IndicatorPosition.locator),
-                onRefresh: () async {
-                  await HapticFeedback.selectionClick();
-                  await controller.getDirectoryList();
-                  controller.easyRefreshController.finishRefresh();
-                  controller.easyRefreshController.resetFooter();
-                },
-                child: _buildCustomScrollView(),
-              ),
+            Column(
+              children: [
+                Expanded(
+                  child: EasyRefresh(
+                    controller: controller.easyRefreshController,
+                    header: CupertinoHeader(
+                        position: IndicatorPosition.locator, safeArea: false),
+                    footer: CupertinoFooter(position: IndicatorPosition.locator),
+                    onRefresh: () async {
+                      await HapticFeedback.selectionClick();
+                      await controller.getDirectoryList();
+                      controller.easyRefreshController.finishRefresh();
+                      controller.easyRefreshController.resetFooter();
+                    },
+                    child: _buildCustomScrollView(),
+                  ),
+                ),
+              ],
             ),
             Obx(() {
               // 多选模式: 显示批量操作栏
               if (controller.isSelectMode.value) {
-                return _buildBatchActionBar();
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildBatchActionBar(),
+                );
               }
               // 移动/复制模式: 显示粘贴底栏
               if (controller.srcObject.name != null &&
                   controller.srcObject.name!.isNotEmpty) {
-                return _buildPasteBar();
+                return Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _buildPasteBar(),
+                );
               }
-              return SizedBox.shrink();
+              // 普通模式: 显示底部悬浮圆角导航栏
+              return Positioned(
+                left: 0,
+                right: 0,
+                bottom: 16,
+                child: _buildFloatingNavBar(),
+              );
             }),
           ],
         ),
       ),
+    );
+  }
+
+  /// 底部悬浮圆角导航栏（多选/排序/布局/刷新/新建）
+  Widget _buildFloatingNavBar() {
+    final canWrite = controller.userInfo.value.permission != null &&
+        PermissionHelper.canWrite(controller.userInfo.value);
+    return FloatingNavBar(
+      items: [
+        FloatingNavItem(
+          icon: CupertinoIcons.checkmark_circle,
+          label: '多选',
+          onTap: () => controller.toggleSelectMode(),
+        ),
+        FloatingNavItem(
+          icon: CupertinoIcons.arrow_up_arrow_down,
+          label: '排序',
+          onTap: () async {
+            final selected = await ObjectHelper.showSortMenu(
+              controller.sortType.value,
+            );
+            if (selected != null) {
+              controller.changeSortType(selected);
+            }
+          },
+        ),
+        FloatingNavItem(
+          icon: controller.layoutType.value == 'grid'
+              ? CupertinoIcons.square_list
+              : CupertinoIcons.square_grid_2x2,
+          label: '布局',
+          onTap: () {
+            controller.layoutType.value =
+                controller.layoutType.value == 'grid' ? 'list' : 'grid';
+          },
+        ),
+        FloatingNavItem(
+          icon: CupertinoIcons.refresh,
+          label: '刷新',
+          onTap: () async => await controller.getDirectoryList(),
+        ),
+        if (canWrite)
+          FloatingNavItem(
+            icon: CupertinoIcons.folder,
+            label: '新建',
+            onTap: () => ObjectHelper.mkdir(
+              path: controller.path,
+              source: PageSource.DIRECTORY,
+              pageTag: tag ?? '',
+            ),
+          ),
+      ],
     );
   }
 

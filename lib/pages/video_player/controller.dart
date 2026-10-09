@@ -20,6 +20,7 @@ import 'package:xlist/gen/index.dart';
 import 'package:xlist/helper/index.dart';
 import 'package:xlist/models/index.dart';
 import 'package:xlist/common/utils.dart';
+import 'package:xlist/common/logger.dart';
 import 'package:xlist/services/core_service.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/database/entity/index.dart';
@@ -31,6 +32,7 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
   final httpHeaders = Map<String, String>().obs;
   final serverId = 0.obs;
   final isLoading = true.obs;
+  final errorMessage = ''.obs; // 播放错误信息
   final isAutoPaused = false.obs;
   final subtitles = <Subtitle>[].obs;
   final subtitleNameList = <String>[].obs;
@@ -88,14 +90,28 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     // 获取服务器信息
     serverId.value = coreService.userStorage.serverId.value;
 
-    // 过滤视频文件
-    objects = objects.where((o) => PreviewHelper.isVideo(o.name!)).toList();
-    
+    // 过滤视频文件；列表为空（单独打开）时用当前文件构造单曲列表
+    final videoObjects =
+        objects.where((o) => PreviewHelper.isVideo(o.name!)).toList();
+    if (videoObjects.isEmpty && objects.isNotEmpty) {
+      objects = List<ObjectModel>.from(objects);
+    } else {
+      objects = videoObjects;
+    }
+    if (objects.isEmpty) {
+      objects = [
+        ObjectModel()
+          ..name = name
+          ..type = 2,
+      ];
+    }
+
     // 获取用户信息
     userInfo.value = coreService.currentUser.value ?? UserModel();
 
     currentName.value = name;
     currentIndex.value = objects.indexWhere((o) => o.name == name);
+    if (currentIndex.value < 0) currentIndex.value = 0;
     showPlaylist.value = objects.length > 1;
 
     // 暂时注释掉音频服务初始化
@@ -143,35 +159,15 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
 
     // 检查 rawUrl 是否为空
     if (object.value.rawUrl == null || object.value.rawUrl!.isEmpty) {
+      errorMessage.value = '视频地址为空，无法播放';
       SmartDialog.showToast('toast_get_object_fail'.tr);
+      isLoading.value = false;
       return;
     }
 
     // 初始化视频播放器，支持本地文件和网络文件
-    String videoUrl = object.value.rawUrl!;
-    if (videoUrl.startsWith('file://')) {
-      // 本地视频文件
-      player = vp.VideoPlayerController.file(
-        File(videoUrl.replaceFirst('file://', '')),
-      );
-    } else {
-      // 网络视频文件
-      player = vp.VideoPlayerController.networkUrl(
-        Uri.parse(videoUrl),
-        httpHeaders: httpHeaders.cast<String, String>(),
-      );
-    }
-    videoPlayerController = player;
-    await player.initialize();
-    playerInitialized.value = true;
-    totalDuration.value = player.value.duration ?? Duration.zero;
-    await player.seekTo(currentPos.value);
-    if (isAutoPlay) {
-      await player.play();
-      isPlaying.value = true;
-    }
-
-    player.addListener(_videoPlayerListener);
+    await _initPlayer();
+    if (errorMessage.value.isNotEmpty) return;
 
     // 加入最近浏览
     await coreService.addToRecent(object.value);
@@ -188,6 +184,52 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     // 添加 WidgetsBindingObserver 来监听屏幕方向变化
     WidgetsBinding.instance.addObserver(this);
 
+    isLoading.value = false;
+  }
+
+  /// 初始化播放器（供首次打开与失败重试复用）
+  Future<void> _initPlayer() async {
+    errorMessage.value = '';
+    String videoUrl = object.value.rawUrl!;
+    try {
+      if (videoUrl.startsWith('file://')) {
+        // 本地视频文件
+        player = vp.VideoPlayerController.file(
+          File(videoUrl.replaceFirst('file://', '')),
+        );
+      } else {
+        // 网络视频文件
+        player = vp.VideoPlayerController.networkUrl(
+          Uri.parse(videoUrl),
+          httpHeaders: httpHeaders.cast<String, String>(),
+        );
+      }
+      videoPlayerController = player;
+      player.addListener(_videoPlayerListener);
+      await player.initialize();
+      playerInitialized.value = true;
+      totalDuration.value = player.value.duration ?? Duration.zero;
+      await player.seekTo(currentPos.value);
+      if (isAutoPlay) {
+        await player.play();
+        isPlaying.value = true;
+      }
+    } catch (e) {
+      Logger.e('Video player initialize failed: $e');
+      errorMessage.value = '视频初始化失败，请检查网络或文件是否可访问：$e';
+      SmartDialog.showToast('视频初始化失败，请检查网络或文件是否可访问');
+      playerInitialized.value = false;
+      isLoading.value = false;
+    }
+  }
+
+  /// 播放失败后重试
+  Future<void> retry() async {
+    isLoading.value = true;
+    await _initPlayer();
+    if (errorMessage.value.isEmpty) {
+      await coreService.addToRecent(object.value);
+    }
     isLoading.value = false;
   }
 
@@ -211,6 +253,12 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
 
   void _videoPlayerListener() async {
     final value = player.value;
+
+    // 播放出错：显示错误信息，不崩溃
+    if (value.hasError) {
+      errorMessage.value = '播放出错：${value.errorDescription ?? "无法解码或网络中断"}';
+      isPlaying.value = false;
+    }
 
     if (_mediaItem != null && _mediaItem!.duration != value.duration) {
       _playerNotificationHandler();
@@ -316,12 +364,21 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     updateSubtitleNameList(object.value.related ?? []);
 
     SmartDialog.dismiss();
-    await player.dispose();
+    try {
+      await player.dispose();
+    } catch (_) {}
     player = vp.VideoPlayerController.networkUrl(
       Uri.parse(object.value.rawUrl!),
       httpHeaders: httpHeaders.cast<String, String>(),
     );
-    await player.initialize();
+    player.addListener(_videoPlayerListener);
+    try {
+      await player.initialize();
+    } catch (e) {
+      errorMessage.value = '视频初始化失败：$e';
+      SmartDialog.showToast('视频初始化失败，请检查网络或文件是否可访问');
+      return;
+    }
     currentPos.value = Duration.zero;
     await updateProgress();
 
@@ -443,8 +500,27 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     await player.seekTo(newPosition > maxPosition ? maxPosition : newPosition);
   }
 
-  void toggleFullScreen() async {
-    isFullScreen.value = !isFullScreen.value;
+  /// 显示播放列表
+  void togglePlaylist() async {
+    final value = await showModalActionSheet(
+      context: Get.context!,
+      title: '播放列表',
+      actions: [
+        for (var i = 0; i < objects.length; i++)
+          SheetAction(
+            label: CommonUtils.formatFileNme(objects[i].name ?? ''),
+            key: i,
+            isDefaultAction: i == currentIndex.value,
+          ),
+      ],
+      cancelLabel: 'cancel'.tr,
+    );
+    if (value != null && value is int && value != currentIndex.value) {
+      changePlaylist(value);
+    }
+  }
+
+  void toggleFullScreen() async {    isFullScreen.value = !isFullScreen.value;
     if (isFullScreen.value) {
       await SystemChrome.setPreferredOrientations([
         DeviceOrientation.landscapeLeft,
@@ -505,11 +581,11 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     _currentPosSubs?.cancel();
     // 移除 WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
-    // 暂时注释掉音频服务
-    // audioHandler.streamController.add(PlaybackState());
-    // audioHandler.streamController.close();
-    player.removeListener(_videoPlayerListener);
-    player.dispose();
+    // 播放器释放（容错：初始化失败时 player 可能未创建）
+    try {
+      player.removeListener(_videoPlayerListener);
+      player.dispose();
+    } catch (_) {}
 
     try {
       if (coreService.downloadService != null) {

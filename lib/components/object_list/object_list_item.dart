@@ -40,66 +40,79 @@ class _ObjectListItemState extends State<ObjectListItem>
   }
 
   Future<void> _loadThumbnail() async {
-    if (widget.isShowPreview &&
-        object.thumb != null &&
-        object.thumb!.isNotEmpty) {
-      final path = await ThumbnailCache().getThumbnailForObject(object);
-      if (path != null) {
-        _thumbnailPath.value = path;
-      }
+    if (!widget.isShowPreview ||
+        object.thumb == null ||
+        object.thumb!.isEmpty) {
+      return;
+    }
+    // 视频：WebDAV 无缩略图服务，下载整个视频文件成本过高，直接使用类型图标
+    if (PreviewHelper.isVideo(object.name ?? '')) return;
+    // 图片：携带 WebDAV 认证头下载缩略图（缺少认证头会 401 导致缩略图缺失）
+    final path = await ThumbnailCache().getThumbnail(
+      url: object.thumb!,
+      headers: DriverHelper.getWebDAVHeaders(),
+    );
+    if (path != null && path.isNotEmpty) {
+      _thumbnailPath.value = path;
     }
   }
 
   /// 构建图标
   Widget _buildIcon() {
+    final isVideoFile = PreviewHelper.isVideo(object.name ?? '');
     if (widget.isShowPreview &&
+        !isVideoFile &&
         object.thumb != null &&
         object.thumb!.isNotEmpty) {
       return Obx(() {
         final thumbnailPath = _thumbnailPath.value;
         final useCached = thumbnailPath != null && thumbnailPath!.isNotEmpty;
-        
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              width: CommonUtils.isPad ? 60 : 130.sp,
-              height: CommonUtils.isPad ? 60 : 130.sp,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(15.r),
-                child: useCached
-                    ? Image.file(
-                        File(thumbnailPath!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            _buildNetworkImage(),
-                      )
-                    : _buildNetworkImage(),
-              ),
-            ),
-            PreviewHelper.isVideo(object.name ?? '')
-                ? Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Padding(
-                      padding: EdgeInsets.all(2.r),
-                      child: Icon(
-                        CupertinoIcons.video_camera_solid,
-                        size: CommonUtils.isPad ? 20 : 35.sp,
-                        color: Colors.white.withOpacity(0.8),
-                      ),
-                    ),
+
+        return Container(
+          width: CommonUtils.isPad ? 60 : 130.sp,
+          height: CommonUtils.isPad ? 60 : 130.sp,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(15.r),
+            child: useCached
+                ? Image.file(
+                    File(thumbnailPath!),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        _buildNetworkImage(),
                   )
-                : SizedBox(),
-          ],
+                : _buildNetworkImage(),
+          ),
         );
       });
     }
 
-    return Icon(
-      FileType.getIcon(object.type ?? 0, object.name ?? ''),
-      size: CommonUtils.isPad ? 60 : 130.sp,
-      color: Get.theme.primaryColor,
+    // 视频 / 无缩略图：类型图标 + 播放角标
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Icon(
+          FileType.getIcon(object.type ?? 0, object.name ?? ''),
+          size: CommonUtils.isPad ? 60 : 130.sp,
+          color: Get.theme.primaryColor,
+        ),
+        if (isVideoFile)
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: EdgeInsets.all(4.r),
+              decoration: BoxDecoration(
+                color: Colors.black45,
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: Icon(
+                CupertinoIcons.play_fill,
+                size: CommonUtils.isPad ? 16 : 30.sp,
+                color: Colors.white,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -107,6 +120,7 @@ class _ObjectListItemState extends State<ObjectListItem>
     return CachedNetworkImage(
       imageUrl: object.thumb!,
       fit: BoxFit.cover,
+      httpHeaders: DriverHelper.getWebDAVHeaders(),
       placeholder: (context, url) =>
           CupertinoActivityIndicator(radius: 8.0),
       errorWidget: (context, url, error) =>

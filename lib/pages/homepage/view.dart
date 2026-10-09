@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 import 'package:keframe/keframe.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 
@@ -104,6 +105,8 @@ class Homepage extends GetView<HomepageController> {
               ),
             ),
           ),
+          // 底部留白，避免悬浮导航栏遮挡最后一行
+          SliverToBoxAdapter(child: SizedBox(height: 180.h)),
         ],
       ),
     );
@@ -174,6 +177,8 @@ class Homepage extends GetView<HomepageController> {
             childCount: controller.objects.value.length,
           ),
         ),
+        // 底部留白，避免悬浮导航栏遮挡最后一行
+        SliverToBoxAdapter(child: SizedBox(height: 180.h)),
       ],
     );
   }
@@ -257,6 +262,46 @@ class Homepage extends GetView<HomepageController> {
         size: 28.r,
         color: Colors.white,
       ),
+    );
+  }
+
+  /// 底部悬浮圆角导航栏（多选/排序/布局/刷新）
+  Widget _buildFloatingNavBar() {
+    return FloatingNavBar(
+      items: [
+        FloatingNavItem(
+          icon: CupertinoIcons.checkmark_circle,
+          label: '多选',
+          onTap: () => controller.toggleSelectMode(),
+        ),
+        FloatingNavItem(
+          icon: CupertinoIcons.arrow_up_arrow_down,
+          label: '排序',
+          onTap: () async {
+            final selected = await ObjectHelper.showSortMenu(
+              controller.sortType.value,
+            );
+            if (selected != null) {
+              controller.changeSortType(selected);
+            }
+          },
+        ),
+        FloatingNavItem(
+          icon: controller.layoutType.value == 'grid'
+              ? CupertinoIcons.square_list
+              : CupertinoIcons.square_grid_2x2,
+          label: '布局',
+          onTap: () {
+            controller.layoutType.value =
+                controller.layoutType.value == 'grid' ? 'list' : 'grid';
+          },
+        ),
+        FloatingNavItem(
+          icon: CupertinoIcons.refresh,
+          label: '刷新',
+          onTap: () => controller.getObjectList(refresh: true),
+        ),
+      ],
     );
   }
 
@@ -345,15 +390,18 @@ class Homepage extends GetView<HomepageController> {
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        // 拦截返回键事件
+    // PopScope 拦截系统返回键与边缘滑动返回：
+    // - 非根目录：返回上一级（与安卓系统返回逻辑一致）
+    // - 根目录：允许退出应用
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
         if (controller.currentPath.value != '/') {
-          // 如果当前不在根目录，返回上级目录
           controller.navigateUp();
-          return false; // 阻止默认的返回行为
+        } else {
+          SystemNavigator.pop();
         }
-        return true; // 允许默认的返回行为（退出应用）
       },
       child: CupertinoPageScaffold(
         navigationBar: CupertinoNavigationBar(
@@ -413,173 +461,146 @@ class Homepage extends GetView<HomepageController> {
               );
             }),
           ),
+          // 顶栏精简：多选/排序/布局已移入底部悬浮导航栏
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 多选入口
-              Obx(
-                () => CupertinoButton(
-                  padding: EdgeInsets.symmetric(horizontal: 8.w),
-                  child: Icon(
-                    controller.isSelectMode.value
-                        ? CupertinoIcons.xmark_circle
-                        : CupertinoIcons.checkmark_circle,
-                    size: CommonUtils.navIconSize,
-                  ),
-                  onPressed: () => controller.toggleSelectMode(),
-                ),
-              ),
-              // 排序入口
-              CupertinoButton(
-                padding: EdgeInsets.symmetric(horizontal: 8.w),
-                child: Icon(
-                  CupertinoIcons.arrow_up_arrow_down,
-                  size: CommonUtils.navIconSize,
-                ),
-                onPressed: () async {
-                  final selected = await ObjectHelper.showSortMenu(
-                    controller.sortType.value,
-                  );
-                  if (selected != null) {
-                    controller.changeSortType(selected);
-                  }
-                },
-              ),
-              // 布局切换
-              CupertinoButton(
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: Icon(
-                  controller.layoutType.value == 'grid' 
-                    ? CupertinoIcons.square_list 
-                    : CupertinoIcons.square_grid_2x2,
-                  size: CommonUtils.navIconSize,
-                ),
-                onPressed: () {
-                  controller.layoutType.value = controller.layoutType.value == 'grid' ? 'list' : 'grid';
-                },
-              ),
+              SizedBox(width: 30.w),
             ],
           ),
         ),
         child: SafeArea(
-          child: Column(
+          child: Stack(
             children: [
-              // 面包屑路径导航
+              Column(
+                children: [
+                  // 面包屑路径导航
+                  Obx(
+                    () => controller.searchQuery.value.isEmpty &&
+                            controller.isServerConfigured &&
+                            controller.objects.value.isNotEmpty
+                        ? _buildBreadcrumb()
+                        : SizedBox.shrink(),
+                  ),
+                  // 搜索进度
+                  Obx(() {
+                    if (!controller.isSearching.value) {
+                      return SizedBox.shrink();
+                    }
+                    return Container(
+                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(minHeight: 4),
+                            ),
+                          ),
+                          SizedBox(width: 12),
+                          Obx(
+                            () => Text(
+                              '已扫描 ${controller.searchedCount.value} 个目录',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ),
+                          CupertinoButton(
+                            padding: EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              '取消',
+                              style: TextStyle(color: Get.theme.primaryColor),
+                            ),
+                            onPressed: () => controller.cancelSearch(),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  Expanded(
+                    child: Obx(() {
+                  if (controller.isFirstLoading.isTrue) {
+                    return Center(
+                      child: CupertinoActivityIndicator(),
+                    );
+                  }
+                  final fileCount = controller.objects.value.length;
+                  final isServerConfigured = controller.isServerConfigured;
+                  
+                  
+                  if (!isServerConfigured) {
+                  // 未配置服务器，显示配置提示
+                  return Container(
+                    padding: EdgeInsets.all(16),
+                    color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
+                    child: EmptyState(
+                      icon: CupertinoIcons.cloud,
+                      title: '未配置服务器',
+                      description: '请先添加一个 WebDAV 服务器，即可浏览和同步云端文件',
+                      action: CupertinoButton(
+                        child: Text('添加服务器'),
+                        onPressed: () async {
+                          // 直接导航到服务器设置页面
+                          await Get.toNamed(Routes.SETTING_SERVER);
+                          // 刷新主页数据
+                          controller.getObjectList();
+                        },
+                      ),
+                    ),
+                  );
+                } else if (fileCount == 0) {
+                  // 已配置服务器但目录为空 / 搜索无结果
+                  final isSearchResult =
+                      controller.searchQuery.value.isNotEmpty &&
+                          !controller.isSearching.value;
+                  return Container(
+                    padding: EdgeInsets.all(16),
+                    color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
+                    child: EmptyState(
+                      icon: isSearchResult
+                          ? CupertinoIcons.search
+                          : CupertinoIcons.folder_open,
+                      title: isSearchResult
+                          ? '未找到结果'
+                          : (controller.errorMessage.value.isNotEmpty
+                              ? controller.errorMessage.value
+                              : '目录为空'),
+                      description: isSearchResult
+                          ? '没有找到与“${controller.searchQuery.value}”匹配的文件'
+                          : '当前目录下没有文件或文件夹',
+                      action: isSearchResult
+                          ? null
+                          : CupertinoButton(
+                              child: Text('刷新'),
+                              onPressed: () {
+                                controller.getObjectList();
+                              },
+                            ),
+                    ),
+                  );
+                } else {
+                  // 显示文件列表
+                  return controller.layoutType.value == 'grid' ? _buildGridView() : _buildListView();
+                }
+                      }),
+                  ),
+                ],
+              ),
+              // 底部：多选模式显示批量操作栏，否则显示悬浮圆角导航栏
               Obx(
-                () => controller.searchQuery.value.isEmpty &&
-                        controller.isServerConfigured &&
-                        controller.objects.value.isNotEmpty
-                    ? _buildBreadcrumb()
-                    : SizedBox.shrink(),
+                () => controller.isSelectMode.value
+                    ? Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: _buildBatchActionBar(),
+                      )
+                    : Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 16,
+                        child: _buildFloatingNavBar(),
+                      ),
               ),
-              // 搜索进度
-              Obx(() {
-                if (!controller.isSearching.value) {
-                  return SizedBox.shrink();
-                }
-                return Container(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(minHeight: 4),
-                        ),
-                      ),
-                      SizedBox(width: 12),
-                      Obx(
-                        () => Text(
-                          '已扫描 ${controller.searchedCount.value} 个目录',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ),
-                      CupertinoButton(
-                        padding: EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(
-                          '取消',
-                          style: TextStyle(color: Get.theme.primaryColor),
-                        ),
-                        onPressed: () => controller.cancelSearch(),
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              Expanded(
-                child: Obx(() {
-              if (controller.isFirstLoading.isTrue) {
-                return Center(
-                  child: CupertinoActivityIndicator(),
-                );
-              }
-              final fileCount = controller.objects.value.length;
-              final isServerConfigured = controller.isServerConfigured;
-              
-              
-              if (!isServerConfigured) {
-              // 未配置服务器，显示配置提示
-              return Container(
-                padding: EdgeInsets.all(16),
-                color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
-                child: EmptyState(
-                  icon: CupertinoIcons.cloud,
-                  title: '未配置服务器',
-                  description: '请先添加一个 WebDAV 服务器，即可浏览和同步云端文件',
-                  action: CupertinoButton(
-                    child: Text('添加服务器'),
-                    onPressed: () async {
-                      // 直接导航到服务器设置页面
-                      await Get.toNamed(Routes.SETTING_SERVER);
-                      // 刷新主页数据
-                      controller.getObjectList();
-                    },
-                  ),
-                ),
-              );
-            } else if (fileCount == 0) {
-              // 已配置服务器但目录为空 / 搜索无结果
-              final isSearchResult =
-                  controller.searchQuery.value.isNotEmpty &&
-                      !controller.isSearching.value;
-              return Container(
-                padding: EdgeInsets.all(16),
-                color: Get.isDarkMode ? Color.fromARGB(255, 18, 18, 18) : Colors.white,
-                child: EmptyState(
-                  icon: isSearchResult
-                      ? CupertinoIcons.search
-                      : CupertinoIcons.folder_open,
-                  title: isSearchResult
-                      ? '未找到结果'
-                      : (controller.errorMessage.value.isNotEmpty
-                          ? controller.errorMessage.value
-                          : '目录为空'),
-                  description: isSearchResult
-                      ? '没有找到与“${controller.searchQuery.value}”匹配的文件'
-                      : '当前目录下没有文件或文件夹',
-                  action: isSearchResult
-                      ? null
-                      : CupertinoButton(
-                          child: Text('刷新'),
-                          onPressed: () {
-                            controller.getObjectList();
-                          },
-                        ),
-                ),
-              );
-            } else {
-              // 显示文件列表
-              return controller.layoutType.value == 'grid' ? _buildGridView() : _buildListView();
-            }
-              }),
-              ),
-              // 多选批量操作栏
-              Obx(() {
-                if (!controller.isSelectMode.value) {
-                  return SizedBox.shrink();
-                }
-                return _buildBatchActionBar();
-              }),
             ],
           ),
         ),

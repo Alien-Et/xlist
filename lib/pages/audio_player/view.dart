@@ -105,12 +105,12 @@ class AudioPlayerPage extends GetView<AudioPlayerController> {
     return Container(
       key: PageStorageKey('single'),
       alignment: Alignment.topCenter,
-      padding: EdgeInsets.only(top: CommonUtils.isPad ? 20 : 100.h),
+      padding: EdgeInsets.only(top: CommonUtils.isPad ? 20 : 60.h),
       child: Column(
         children: [
           Container(
-            width: CommonUtils.isPad ? 300 : 700.r,
-            height: CommonUtils.isPad ? 300 : 700.r,
+            width: CommonUtils.isPad ? 300 : 600.r,
+            height: CommonUtils.isPad ? 300 : 600.r,
             child: _buildCover(),
           ),
           SizedBox(height: 50.h),
@@ -135,7 +135,7 @@ class AudioPlayerPage extends GetView<AudioPlayerController> {
     return Container(
       key: PageStorageKey('playlist'),
       padding: EdgeInsets.only(
-          top: CommonUtils.isPad ? 20 : 100.h, left: 50.w, right: 50.w),
+          top: CommonUtils.isPad ? 20 : 40.h, left: 50.w, right: 50.w),
       child: Column(
         children: [
           Row(
@@ -219,7 +219,8 @@ class AudioPlayerPage extends GetView<AudioPlayerController> {
       child: Slider(
         value: currentValue,
         min: 0.0,
-        max: duration,
+        // 总时长未知时为 1，避免 Slider(max <= min) 断言崩溃
+        max: duration > 0 ? duration : 1.0,
         onChanged: (v) {
           controller.seekPos = v;
         },
@@ -353,99 +354,140 @@ class AudioPlayerPage extends GetView<AudioPlayerController> {
             ],
           ),
         ),
-        child: DefaultTabController(
-          length: 2,
-          child: Column(
-            children: [
-              Container(
-                height: 1150.h,
-                child: Obx(
-                  () => TabBarView(
-                    controller: controller.tabController,
-                    children: [_buildSingleFile(), _buildPlaylist()],
+        child: SafeArea(
+          child: DefaultTabController(
+            length: 2,
+            child: Obx(() {
+              // 播放错误：显示错误视图 + 重试
+              if (controller.errorMessage.value.isNotEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 80.w),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          CupertinoIcons.exclamationmark_triangle,
+                          size: 120.sp,
+                          color: Get.theme.primaryColor,
+                        ),
+                        SizedBox(height: 40.h),
+                        Text(
+                          controller.errorMessage.value,
+                          textAlign: TextAlign.center,
+                          style: Get.textTheme.bodyMedium?.copyWith(
+                            color: Get.isDarkMode
+                                ? Colors.white70
+                                : Colors.black54,
+                          ),
+                        ),
+                        SizedBox(height: 40.h),
+                        CupertinoButton.filled(
+                          child: Text('重试'),
+                          onPressed: () => controller.retry(),
+                        ),
+                        SizedBox(height: 16.h),
+                        CupertinoButton(
+                          child: Text('返回'),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-              SizedBox(height: 50.h),
-              Container(
-                height: 30.h,
-                padding: EdgeInsets.symmetric(horizontal: 50.w),
-                child: Obx(() => _buildFijkSlider()),
-              ),
-              _buildDuration(),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildControlButton(),
-                    SizedBox(height: 50.h),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 100.w),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Obx(
-                            () => CupertinoButton(
-                              alignment: Alignment.centerLeft,
-                              child: Icon(
-                                PlayMode.getIcon(controller.playMode.value),
-                                size: CommonUtils.isPad ? 30 : 70.sp,
-                                color: Get.isDarkMode
-                                    ? Colors.white
-                                    : Colors.black87,
-                              ),
-                              onPressed: () {
-                                controller.playMode.value =
-                                    controller.playMode.value == PlayMode.SHUFFLE
-                                        ? PlayMode.LIST_LOOP
-                                        : controller.playMode.value + 1;
-                              },
-                            ),
-                          ),
-                          Obx(
-                            () => CupertinoButton(
-                              alignment: Alignment.center,
-                              child: Icon(
-                                CupertinoIcons.list_bullet,
-                                size: CommonUtils.isPad ? 30 : 70.sp,
-                                color: controller.isPlaylist.value
-                                    ? Get.theme.primaryColor
-                                    : Get.isDarkMode
-                                        ? Colors.white
-                                        : Colors.black87,
-                              ),
-                              onPressed: () {
-                                controller.isPlaylist.value =
-                                    !controller.isPlaylist.value;
-                                controller.tabController.index =
-                                    controller.isPlaylist.value ? 1 : 0;
-                              },
-                            ),
-                          ),
-                          Obx(
-                            () => CupertinoButton(
-                              alignment: Alignment.centerRight,
-                              child: Icon(
-                                CupertinoIcons.clock,
-                                size: CommonUtils.isPad ? 30 : 70.sp,
-                                color:
-                                    controller.timerDuration.value.inSeconds > 0
-                                        ? Get.theme.primaryColor
-                                        : Get.isDarkMode
-                                            ? Colors.white
-                                            : Colors.black87,
-                              ),
-                              onPressed: () => controller.timedShutdown(),
-                            ),
-                          ),
-                        ],
+                );
+              }
+
+              return Column(
+                children: [
+                  // 封面 / 播放列表（弹性分配高度，避免固定高度溢出）
+                  Expanded(
+                    child: Obx(
+                      () => TabBarView(
+                        controller: controller.tabController,
+                        children: [_buildSingleFile(), _buildPlaylist()],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ],
+                  ),
+                  // 进度条（总时长未知时隐藏，避免 Slider max=0 崩溃）
+                  if (controller.duration.value.inMilliseconds > 0)
+                    Container(
+                      height: 30.h,
+                      padding: EdgeInsets.symmetric(horizontal: 50.w),
+                      child: Obx(() => _buildFijkSlider()),
+                    ),
+                  _buildDuration(),
+                  SizedBox(height: 20.h),
+                  // 控制按钮
+                  _buildControlButton(),
+                  SizedBox(height: 20.h),
+                  // 播放模式 / 列表 / 定时
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 100.w),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Obx(
+                          () => CupertinoButton(
+                            alignment: Alignment.centerLeft,
+                            child: Icon(
+                              PlayMode.getIcon(controller.playMode.value),
+                              size: CommonUtils.isPad ? 30 : 70.sp,
+                              color: Get.isDarkMode
+                                  ? Colors.white
+                                  : Colors.black87,
+                            ),
+                            onPressed: () {
+                              controller.playMode.value =
+                                  controller.playMode.value == PlayMode.SHUFFLE
+                                      ? PlayMode.LIST_LOOP
+                                      : controller.playMode.value + 1;
+                            },
+                          ),
+                        ),
+                        Obx(
+                          () => CupertinoButton(
+                            alignment: Alignment.center,
+                            child: Icon(
+                              CupertinoIcons.list_bullet,
+                              size: CommonUtils.isPad ? 30 : 70.sp,
+                              color: controller.isPlaylist.value
+                                  ? Get.theme.primaryColor
+                                  : Get.isDarkMode
+                                      ? Colors.white
+                                      : Colors.black87,
+                            ),
+                            onPressed: () {
+                              controller.isPlaylist.value =
+                                  !controller.isPlaylist.value;
+                              controller.tabController.index =
+                                  controller.isPlaylist.value ? 1 : 0;
+                            },
+                          ),
+                        ),
+                        Obx(
+                          () => CupertinoButton(
+                            alignment: Alignment.centerRight,
+                            child: Icon(
+                              CupertinoIcons.clock,
+                              size: CommonUtils.isPad ? 30 : 70.sp,
+                              color:
+                                  controller.timerDuration.value.inSeconds > 0
+                                      ? Get.theme.primaryColor
+                                      : Get.isDarkMode
+                                          ? Colors.white
+                                          : Colors.black87,
+                            ),
+                            onPressed: () => controller.timedShutdown(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 30.h),
+                ],
+              );
+            }),
           ),
         ),
       ),

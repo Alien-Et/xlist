@@ -124,49 +124,88 @@ class VideoPlayerPage extends GetView<VideoPlayerController> {
   Widget build(BuildContext context) {
     _loadThumbnail();
     return Obx(
-      () => controller.isFullScreen.value
-          ? Container(
-              color: Colors.black,
-              child: Stack(
-                children: [
-                  _buildVideoPlayer(),
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      color: Colors.black.withOpacity(0.5),
-                      child: _buildControlBar(),
+      () {
+        // 播放错误：显示错误视图 + 重试
+        if (controller.errorMessage.value.isNotEmpty &&
+            !controller.playerInitialized.value) {
+          return CupertinoPageScaffold(
+            backgroundColor: Get.theme.scaffoldBackgroundColor,
+            navigationBar: _buildNavigationBar(),
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      CupertinoIcons.exclamationmark_triangle,
+                      size: 64,
+                      color: Get.theme.primaryColor,
                     ),
-                  ),
-                  Positioned(
-                    top: 20,
-                    left: 20,
-                    child: CupertinoButton(
-                      onPressed: () {
-                        controller.toggleFullScreen();
-                      },
-                      child: Icon(
-                        CupertinoIcons.back, 
-                        color: Colors.white,
+                    const SizedBox(height: 16),
+                    Text(
+                      controller.errorMessage.value,
+                      textAlign: TextAlign.center,
+                      style: Get.textTheme.bodyMedium?.copyWith(
+                        color: Get.isDarkMode ? Colors.white70 : Colors.black54,
                       ),
                     ),
-                  ),
-                ],
-              ),
-            )
-          : CupertinoPageScaffold(
-              backgroundColor: Get.theme.scaffoldBackgroundColor,
-              navigationBar: _buildNavigationBar(),
-              child: SafeArea(
-                child: Column(
-                  children: [
-                    _buildVideoPlayer(),
-                    _buildControlBar(),
+                    const SizedBox(height: 24),
+                    CupertinoButton.filled(
+                      child: const Text('重试'),
+                      onPressed: () => controller.retry(),
+                    ),
                   ],
                 ),
               ),
             ),
+          );
+        }
+
+        return controller.isFullScreen.value
+            ? Container(
+                color: Colors.black,
+                child: Stack(
+                  children: [
+                    _buildVideoPlayer(),
+                    Positioned(
+                      bottom: 0,
+                      left: 0,
+                      right: 0,
+                      child: Container(
+                        color: Colors.black.withOpacity(0.5),
+                        child: _buildControlBar(),
+                      ),
+                    ),
+                    Positioned(
+                      top: 20,
+                      left: 20,
+                      child: CupertinoButton(
+                        onPressed: () {
+                          controller.toggleFullScreen();
+                        },
+                        child: const Icon(
+                          CupertinoIcons.back,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : CupertinoPageScaffold(
+                backgroundColor: Get.theme.scaffoldBackgroundColor,
+                navigationBar: _buildNavigationBar(),
+                child: SafeArea(
+                  child: Column(
+                    children: [
+                      Expanded(child: _buildVideoPlayer()),
+                      _buildControlBar(),
+                    ],
+                  ),
+                ),
+              );
+      },
     );
   }
 
@@ -196,13 +235,38 @@ class VideoPlayerPage extends GetView<VideoPlayerController> {
   }
 
   Widget _buildControlBar() {
-    return Expanded(
-      child: Column(
-        children: [
-          _buildProgressBar(),
-          _buildControlButtons(),
-        ],
-      ),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildProgressBar(),
+        _buildControlButtons(),
+        // 全屏 / 播放列表入口
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            Obx(
+              () => controller.showPlaylist.value
+                  ? CupertinoButton(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(CupertinoIcons.list_bullet, size: 20),
+                          const SizedBox(width: 6),
+                          Text('${controller.currentIndex.value + 1}/${controller.objects.length}'),
+                        ],
+                      ),
+                      onPressed: () => controller.togglePlaylist(),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+            CupertinoButton(
+              child: const Icon(CupertinoIcons.fullscreen, size: 20),
+              onPressed: () => controller.toggleFullScreen(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -225,9 +289,13 @@ class VideoPlayerPage extends GetView<VideoPlayerController> {
                 ),
               ],
             ),
+            // 总时长未知时用 1，避免 Slider(max <= min) 断言崩溃
             Slider(
-              value: controller.currentPosition.value.inMilliseconds.toDouble(),
-              max: controller.totalDuration.value.inMilliseconds.toDouble(),
+              value: controller.currentPosition.value.inMilliseconds
+                  .toDouble(),
+              max: controller.totalDuration.value.inMilliseconds > 0
+                  ? controller.totalDuration.value.inMilliseconds.toDouble()
+                  : 1.0,
               onChanged: (value) {
                 controller.seekTo(Duration(milliseconds: value.toInt()));
               },
