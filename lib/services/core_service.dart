@@ -533,9 +533,11 @@ class CoreService extends GetxService {
       
       // 尝试使用标准的WebDAV PROPFIND请求（网络异常自动重试一次）
       Response<dynamic>? propfindResponse;
+      String? propfindError;
       try {
         propfindResponse = await _sendPropfind(webDavUrl, authHeader, 1);
       } catch (e) {
+        propfindError = e.toString();
         Logger.w('PROPFIND request failed: $e');
       }
       if (propfindResponse == null) {
@@ -544,7 +546,19 @@ class CoreService extends GetxService {
           await Future.delayed(const Duration(milliseconds: 400));
           propfindResponse = await _sendPropfind(webDavUrl, authHeader, 1);
         } catch (e) {
+          propfindError = e.toString();
           Logger.w('PROPFIND retry failed: $e');
+        }
+      }
+      if (propfindResponse == null) {
+        // 部分服务器不支持 Depth:1（返回异常），降级尝试 Depth:0 确认连接，
+        // 避免把"仅支持 Depth:0 的服务器"误报为连接失败
+        try {
+          Logger.w('Depth:1 PROPFIND failed, trying Depth:0...');
+          propfindResponse = await _sendPropfind(webDavUrl, authHeader, 0);
+        } catch (e) {
+          propfindError = e.toString();
+          Logger.w('PROPFIND Depth:0 also failed: $e');
         }
       }
 
@@ -576,7 +590,7 @@ class CoreService extends GetxService {
           // 先尝试备选方法（HTML 目录列表等），仍为空则视为空目录，不误报"连接失败"。
           Logger.d('207 with empty parse result, trying alternative methods');
           final altObjects =
-              await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
+              await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError, propfindError: propfindError);
           if (altObjects.isNotEmpty) {
             currentObjects.value = altObjects;
             return altObjects;
@@ -598,7 +612,7 @@ class CoreService extends GetxService {
         } else if (response.statusCode == 405) {
           // 405 Method Not Allowed - 尝试使用备选方法
           Logger.d('Server returned 405 Method Not Allowed, trying alternative methods');
-          return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
+          return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError, propfindError: propfindError);
         } else if (response.statusCode == 200) {
           // 200 OK - 可能是HTML目录列表
           Logger.d('Server returned 200 OK, trying to parse as HTML directory listing');
@@ -609,13 +623,13 @@ class CoreService extends GetxService {
             return objects;
           } else {
             // 解析失败，尝试备选方法
-            return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
+            return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError, propfindError: propfindError);
           }
         } else {
           // 其他错误
           final error = WebDAVError(
             WebDAVErrorType.SERVER_ERROR,
-            'Server error: ${response.statusCode} ${response.statusMessage}',
+            'Server error: ${response.statusCode} ${response.statusMessage}\n请求地址：$webDavUrl',
             originalError: response,
           );
           Logger.e('Server error: ${error.message}');
@@ -651,7 +665,7 @@ class CoreService extends GetxService {
       }
 
       // 尝试使用GET方法作为最后的备选
-      return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError);
+      return await _tryAlternativeMethods(webDavUrl, authHeader, path, serverUrl, onError, propfindError: propfindError);
     } on DioError catch (e) {
       Logger.e('Network error in WebDAV request: $e');
       Logger.e('Dio error type: ${e.type}');
@@ -1211,7 +1225,7 @@ class CoreService extends GetxService {
   }
   
   // 尝试使用备选方法获取文件列表
-  Future<List<ObjectModel>> _tryAlternativeMethods(String url, String authHeader, String path, String serverUrl, Function(WebDAVError)? onError) async {
+  Future<List<ObjectModel>> _tryAlternativeMethods(String url, String authHeader, String path, String serverUrl, Function(WebDAVError)? onError, {String? propfindError}) async {
     Logger.d('=== Trying alternative methods for WebDAV ===');
     
     // 1. 尝试使用GET方法
@@ -1263,9 +1277,12 @@ class CoreService extends GetxService {
     
     // 所有方法都失败，返回空列表
     Logger.e('All alternative methods failed');
+    final detail = propfindError != null && propfindError.isNotEmpty
+        ? '（PROPFIND 异常：$propfindError）'
+        : '';
     final error = WebDAVError(
       WebDAVErrorType.NETWORK_ERROR,
-      '无法连接 WebDAV 服务器：PROPFIND/GET 均失败。请检查网络连接、服务器地址（含协议头 https://）与登录账号，必要时在设置中重新测试连接。',
+      '无法连接 WebDAV 服务器：PROPFIND/GET 均失败。请检查网络连接、服务器地址（含协议头 https://）与登录账号，必要时在设置中重新测试连接。$detail\n请求地址：$url',
     );
     onError?.call(error);
     errorMessage.value = error.message;
