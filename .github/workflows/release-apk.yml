@@ -62,6 +62,20 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # 预装 Android NDK（AGP 默认需要 ndk;27.0.12077973，
+      # runner 镜像未必自带，缺失时 Gradle 自动下载易损坏失败）
+      - name: Install Android NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
+          for i in 1 2 3; do
+            sdkmanager "ndk;27.0.12077973" && break
+            echo "NDK download failed (attempt $i), retrying..."
+            rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
+            sleep 5
+          done
+          test -d "$ANDROID_HOME/ndk/27.0.12077973" && echo "NDK 27.0.12077973 installed OK" || { echo "NDK install FAILED"; exit 1; }
+
       # 恢复或生成 release 签名密钥：
       # - 若配置了 secrets.KEYSTORE（base64 的 jks），使用固定密钥（推荐，可覆盖升级）
       # - 否则生成临时密钥（每次构建签名不同，仅适合测试分发）
