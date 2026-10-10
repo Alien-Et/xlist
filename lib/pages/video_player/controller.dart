@@ -22,6 +22,7 @@ import 'package:xlist/models/index.dart';
 import 'package:xlist/common/utils.dart';
 import 'package:xlist/common/logger.dart';
 import 'package:xlist/services/core_service.dart';
+import 'package:xlist/services/dio_service.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/database/entity/index.dart';
 import 'package:xlist/repositorys/index.dart';
@@ -238,10 +239,48 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
       }
     } catch (e) {
       Logger.e('Video player initialize failed: $e');
-      errorMessage.value = '视频初始化失败，请检查网络或文件是否可访问：$e';
+      // 预检播放地址，给出具体失败原因（文件不存在/无权限/服务器不支持流式等）
+      String? diagnose;
+      try {
+        diagnose = await _diagnoseVideoUrl(videoUrl);
+      } catch (_) {}
+      errorMessage.value = '视频初始化失败，请检查网络或文件是否可访问：$e'
+          '${diagnose != null ? '\n$diagnose' : ''}';
       SmartDialog.showToast('视频初始化失败，请检查网络或文件是否可访问');
       playerInitialized.value = false;
       isLoading.value = false;
+    }
+  }
+
+  /// 预检播放地址：GET Range 探测服务器对流式播放的支持情况
+  Future<String?> _diagnoseVideoUrl(String url) async {
+    if (url.startsWith('file://')) return null;
+    try {
+      final resp = await DioService.to.dio.get(
+        url,
+        options: Options(
+          headers: {
+            ...httpHeaders.value,
+            'Range': 'bytes=0-1',
+          },
+          validateStatus: (status) => status != null && status < 600,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
+      final status = resp.statusCode ?? 0;
+      if (status == 404) return '播放地址不存在（404），文件可能已被删除或移动';
+      if (status == 401 || status == 403) {
+        return '播放地址无访问权限（$status），请检查账号权限';
+      }
+      final acceptRanges = resp.headers['accept-ranges']?.toString().toLowerCase();
+      if (status == 200 && acceptRanges != 'bytes') {
+        return '服务器不支持 Range 流式播放（Accept-Ranges: ${acceptRanges ?? '无'}），'
+            '在线播放受限，建议先下载再播放';
+      }
+      return '播放地址响应正常（$status），播放器仍失败：可能是视频编码不支持或服务器流式响应异常';
+    } catch (e2) {
+      return '播放地址不可访问：$e2';
     }
   }
 

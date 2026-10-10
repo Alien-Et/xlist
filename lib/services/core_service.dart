@@ -797,30 +797,30 @@ class CoreService extends GetxService {
   }
 
   // 解析WebDAV响应
-  // 发送标准 WebDAV PROPFIND 请求（统一封装，失败返回 null 由调用方决定重试/备选）
+  // 发送标准 WebDAV PROPFIND 请求（异常直接上抛，调用方 catch 记录详情用于诊断）
   Future<Response<dynamic>?> _sendPropfind(String url, String authHeader, int depth) async {
-    try {
-      return await dioService.dio.request(
-        url,
-        options: Options(
-          method: 'PROPFIND',
-          headers: {
-            'Depth': '$depth',
-            'Authorization': authHeader,
-            'Content-Type': 'application/xml',
-            'Accept': 'application/xml, text/xml;q=0.9, */*;q=0.8',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          },
-          responseType: ResponseType.plain,
-          validateStatus: (status) {
-            return status! < 500;
-          },
-          // 标准的超时设置
-          connectTimeout: Duration(seconds: 30),
-          receiveTimeout: Duration(seconds: 60),
-        ),
-        // 标准的PROPFIND请求体，包含更多属性
-        data: '''<?xml version="1.0" encoding="utf-8"?>
+    return await dioService.dio.request(
+      url,
+      options: Options(
+        method: 'PROPFIND',
+        headers: {
+          'Depth': '$depth',
+          'Authorization': authHeader,
+          'Content-Type': 'application/xml',
+          'Accept': 'application/xml, text/xml;q=0.9, */*;q=0.8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+        responseType: ResponseType.plain,
+        // 接受 5xx：服务器 500/502 等应显示"服务器错误"，而非误判为网络失败
+        validateStatus: (status) {
+          return status! < 600;
+        },
+        // 标准的超时设置
+        connectTimeout: Duration(seconds: 30),
+        receiveTimeout: Duration(seconds: 60),
+      ),
+      // 标准的PROPFIND请求体，包含更多属性
+      data: '''<?xml version="1.0" encoding="utf-8"?>
 <propfind xmlns="DAV:">
   <prop>
     <resourcetype/>
@@ -829,11 +829,7 @@ class CoreService extends GetxService {
     <getcontenttype/>
   </prop>
 </propfind>''',
-      );
-    } catch (e) {
-      Logger.w('_sendPropfind error: $e');
-      return null;
-    }
+    );
   }
 
   List<ObjectModel> _parseWebDAVResponse(String response, String path, String serverUrl) {
