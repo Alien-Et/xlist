@@ -304,6 +304,15 @@ class Homepage extends GetView<HomepageController> {
             path: controller.currentPath.value,
           ),
         ),
+        FloatingNavItem(
+          icon: CupertinoIcons.settings,
+          label: '设置',
+          onTap: () => Get.toNamed(Routes.SETTING)?.then(
+            (value) => controller.getObjectList(
+              path: controller.currentPath.value,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -413,14 +422,6 @@ class Homepage extends GetView<HomepageController> {
           leading: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CupertinoButton(
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: Icon(CupertinoIcons.umbrella_fill, size: CommonUtils.navIconSize),
-                onPressed: () => Get.toNamed(Routes.SETTING)
-                    ?.then((value) => controller.getObjectList(
-                          path: controller.currentPath.value,
-                        )),
-              ),
               CupertinoButton(
                 padding: EdgeInsets.symmetric(horizontal: 16.w),
                 child: Icon(CupertinoIcons.download_circle, size: CommonUtils.navIconSize),
