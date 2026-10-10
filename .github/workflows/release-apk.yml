@@ -66,10 +66,14 @@ jobs:
       # runner 镜像未必自带，缺失时 Gradle 自动下载易损坏失败）
       - name: Install Android NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          test -x "$SDKMANAGER" || SDKMANAGER=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
           for i in 1 2 3; do
-            sdkmanager "ndk;27.0.12077973" && break
+            "$SDKMANAGER" "ndk;27.0.12077973" && break
             echo "NDK download failed (attempt $i), retrying..."
             rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
             sleep 5
