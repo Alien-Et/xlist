@@ -1089,15 +1089,8 @@ class CoreService extends GetxService {
     
     // 检查是否是完整的互联网地址
     if (!rawUrl.startsWith('http://') && !rawUrl.startsWith('https://')) {
-      // 检查WebDAV响应中是否包含真实的文件URL
-      // 有些WebDAV服务器会在响应中包含真实的文件URL
-      // 这里可以添加逻辑来解析响应中的真实URL
-      
-      // 如果没有找到真实的URL，使用WebDAV服务器地址构建URL
+      // 使用WebDAV服务器地址构建URL
       String fullUrl = serverUrl;
-      if (!fullUrl.endsWith('/')) {
-        fullUrl += '/';
-      }
       
       // 移除rawUrl开头的/（如果有）
       String cleanHref = rawUrl;
@@ -1105,15 +1098,23 @@ class CoreService extends GetxService {
         cleanHref = cleanHref.substring(1);
       }
       
-      // 检查是否存在路径重复
-      String serverPath = Uri.parse(fullUrl).path;
-      if (serverPath.isNotEmpty && serverPath != '/' && cleanHref.startsWith(serverPath.substring(1))) {
-        // 如果serverUrl已经包含了href的部分，只添加剩余部分
-        cleanHref = cleanHref.substring(serverPath.length - 1);
+      // 若 href 是相对服务器根的路径（含 serverUrl 的路径前缀，如 /dav/xxx），
+      // 去掉该前缀，避免拼接后路径重复
+      final serverPath = Uri.parse(fullUrl).path; // 如 /dav 或 ''
+      if (serverPath.isNotEmpty && serverPath != '/') {
+        final prefix = serverPath.substring(1);
+        if (cleanHref == prefix) {
+          cleanHref = '';
+        } else if (cleanHref.startsWith('$prefix/')) {
+          cleanHref = cleanHref.substring(prefix.length + 1);
+        }
       }
       
-      // 构建最终URL
-      rawUrl = fullUrl + cleanHref;
+      // 统一去掉 serverUrl 尾斜杠后拼接单个斜杠，避免双斜杠
+      final base = fullUrl.endsWith('/')
+          ? fullUrl.substring(0, fullUrl.length - 1)
+          : fullUrl;
+      rawUrl = cleanHref.isEmpty ? '$base/' : '$base/$cleanHref';
     }
     
     // 解码URL，确保是自然可读的格式

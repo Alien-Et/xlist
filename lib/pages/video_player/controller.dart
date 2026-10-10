@@ -120,22 +120,44 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
     // audioHandler.setVideoFunctions(player.play, player.pause, (position) => player.seekTo(Duration(milliseconds: position)), player.dispose);
 
     if (file.isEmpty) {
-      try {
-        // 获取视频文件信息
-        final videoObject = await ObjectRepository.get(path: '${path}${name}');
-        videoObject.name = name;
-        videoObject.rawUrl = CommonUtils.getDownloadLink(
-          path,
-          object: videoObject,
-          userInfo: userInfo.value,
-        );
-        // 设置WebDAV认证头
+      // 优先复用列表已解析的 rawUrl（避免对单个文件重新 PROPFIND 导致 404）
+      ObjectModel? listObject;
+      for (final o in objects) {
+        if (o.name == name && o.rawUrl != null && o.rawUrl!.isNotEmpty) {
+          listObject = o;
+          break;
+        }
+      }
+      if (listObject != null) {
+        object.value = listObject;
         httpHeaders.value = DriverHelper.getWebDAVHeaders();
-        object.value = videoObject;
-      } catch (e) {
-        print('Error getting video object: $e');
-        SmartDialog.showToast('toast_get_object_fail'.tr);
-        return;
+      } else {
+        try {
+          // 获取视频文件信息
+          final videoObject = await ObjectRepository.get(path: '${path}${name}');
+          videoObject.name = name;
+          videoObject.rawUrl = CommonUtils.getDownloadLink(
+            path,
+            object: videoObject,
+            userInfo: userInfo.value,
+          );
+          // 设置WebDAV认证头
+          httpHeaders.value = DriverHelper.getWebDAVHeaders();
+          object.value = videoObject;
+        } catch (e) {
+          Logger.w('ObjectRepository.get failed, fallback to URL build: $e');
+          // PROPFIND 失败时按服务器 URL 直接拼接播放地址，不阻断播放
+          final fallback = ObjectModel()
+            ..name = name
+            ..type = 2
+            ..rawUrl = CommonUtils.getDownloadLink(
+              path,
+              object: ObjectModel()..name = name,
+              userInfo: userInfo.value,
+            );
+          httpHeaders.value = DriverHelper.getWebDAVHeaders();
+          object.value = fallback;
+        }
       }
     } else {
       final download = await coreService.downloadDao

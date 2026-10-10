@@ -131,7 +131,11 @@ class CommonUtils {
       if (v.isNotEmpty) encodePath += '/${Uri.encodeComponent(v)}';
     });
 
-    return '${serverUrl}${encodePath}';
+    // 统一去掉 serverUrl 尾斜杠后拼接，避免双斜杠（部分服务器会 404）
+    final base = serverUrl.endsWith('/')
+        ? serverUrl.substring(0, serverUrl.length - 1)
+        : serverUrl;
+    return '${base}${encodePath}';
   }
 
   /// 排序对象列表
