@@ -729,9 +729,10 @@ class _HomeSearchFieldState extends State<_HomeSearchField> {
               (isDark ? Colors.white : Colors.black),
         ),
         decoration: BoxDecoration(
-          // 深色模式与页面背景（CommonUtils.backgroundColor 0xFF121212）保持同一底色，
-          // 仅靠边框区分搜索框；浅色模式沿用浅灰底
-          color: isDark ? CommonUtils.backgroundColor : Colors.grey[100],
+          // 与背景同色系但轻微区分，两种模式逻辑对称：
+          // 浅色：白背景(0xFFF2F2F7) + 浅灰搜索框(grey[100])
+          // 深色：纯黑背景(0xFF121212) + 深灰搜索框(0xFF1C1C1E)
+          color: isDark ? const Color(0xFF1C1C1E) : Colors.grey[100],
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: isDark ? Colors.white24 : Colors.transparent,
