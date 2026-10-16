@@ -3,6 +3,11 @@
 > 每次修复功能后的记录（最新在上）。版本号对应 GitHub Release tag。
 
 ## 未发布（当前开发中，v4 批次）
+- **修复 HTTP 明文流量被 Android 禁止（cleartext）**：视频播放报 `Cleartext HTTP traffic to 127.0.0.1 not permitted`、图片解码失败（下载到错误内容导致解码 unimplemented）——根因是 http 服务器（含本地代理）请求被 Android 9+ 默认拦截。主 Manifest 增加 `android:usesCleartextTraffic="true"`，http/https 服务器均可正常播放与加载
+- **修复 AudioService not found（音频播放/后台通知）**：audio_service 插件的 AudioService/MediaButtonReceiver 未在 Manifest 注册（日志 `Unable to start service ... AudioService not found`），已补齐 service/receiver 注册 + FOREGROUND_SERVICE、FOREGROUND_SERVICE_MEDIA_PLAYBACK 权限
+- 构建 debug APK 验证通过（analyze 0 error）
+
+
 - **主页顶栏搜索框底色改为透明**：搜索框不设背景色，直接透出页面背景（任何主题下与背景天然一致）；保留圆角+浅描边标识输入框位置（深色 white24 / 浅色 black12）
 
 
