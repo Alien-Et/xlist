@@ -3,6 +3,9 @@
 > 每次修复功能后的记录（最新在上）。版本号对应 GitHub Release tag。
 
 ## 未发布（当前开发中，v4 批次）
+- **修复主页顶栏搜索框深色模式底色不一致**：深色主题下搜索框底色原为 0xFF2E2E34（偏亮灰），与纯黑背景（0xFF121212）不协调；改为使用 CommonUtils.backgroundColor 与页面背景完全同色，仅靠边框区分（浅色模式不变；搜索页为原生 CupertinoSearchTextField 深色自适应无此问题）
+
+
 - **修复 debug 模式红屏（No Material widget found）**：新建服务器页输入框是 Material 的 TextField，但页面为 Cupertino 风格树（CupertinoPageScaffold）无 Material ancestor，debug 断言直接报错并遮挡提示。TextFieldHelper.createCupertino 外包一层透明 Material（Colors.transparent）提供父级，不影响视觉，覆盖该页全部输入框
 
 
