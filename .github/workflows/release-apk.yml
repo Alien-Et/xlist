@@ -1,0 +1,178 @@
+name: 构建并发布 APK
+
+# 显式设置所需权限
+permissions:
+  contents: write  # 允许创建 tag 和 Release
+
+on:
+  # 推送版本标签（v*）时打包并发布，如 git push origin v1.2.3
+  push:
+    tags: ['v*']
+  workflow_dispatch: # 也可手动触发
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    # 免费 runner 上全量构建会超 6 小时被取消；限制超时并做提速优化
+    timeout-minutes: 150
+    env:
+      # CI 在海外，禁用阿里云镜像走官方仓库（镜像在海外返回 502）
+      USE_ALIYUN_MIRROR: "false"
+
+    steps:
+      # 检出仓库代码
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 调优 Gradle 内存（CI 机器 7G，R8 需要更多 Metaspace）
+      - name: Tune Gradle memory for CI
+        run: |
+          sed -i 's/-Xmx1536m -XX:MaxMetaspaceSize=384m/-Xmx4G -XX:MaxMetaspaceSize=1G/' android/gradle.properties
+          sed -i 's/-Dkotlin.daemon.jvm.options=-Xmx768m/-Dkotlin.daemon.jvm.options=-Xmx2g/' android/gradle.properties
+          sed -i 's/kotlin.daemon.jvmargs=-Xmx768m/kotlin.daemon.jvmargs=-Xmx2g/' android/gradle.properties
+          grep -oE "Xmx[0-9]+m|MaxMetaspaceSize=[0-9]+m" android/gradle.properties | head -3
+
+      # 缓存 Gradle 依赖（第二次起构建大幅提速）
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # 设置 JDK 17（Flutter/AGP 8.11 需要）
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 设置 Flutter 环境（与本地验证版本一致）
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.5'
+          channel: 'stable'
+          cache: true
+
+      # 版本号与推送的标签同步：pubspec version = 标签版本（如 v1.2.3 → 1.2.3+10203）
+      # Android versionCode/versionName 引用 flutter.versionCode/versionName，自动跟随
+      - name: Sync version from tag
+        run: |
+          NEW_TAG="${GITHUB_REF_NAME}"
+          VERSION="${NEW_TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+          BUILD=$((MAJOR * 10000 + MINOR * 100 + PATCH))
+          echo "NEW_TAG=$NEW_TAG" >> "$GITHUB_ENV"
+          # 更新 pubspec.yaml 版本（version: X.Y.Z+BUILD）
+          sed -i "s/^version: .*/version: $VERSION+$BUILD/" pubspec.yaml
+          grep '^version:' pubspec.yaml
+          echo "Synced version: $VERSION (build $BUILD) from tag $NEW_TAG"
+
+      # 获取依赖
+      - name: Install dependencies
+        run: flutter pub get
+
+      # 预装 Android NDK（AGP 默认需要 ndk;27.0.12077973，
+      # runner 镜像未必自带，缺失时 Gradle 自动下载易损坏失败）
+      - name: Install Android NDK
+        run: |
+          SDKMANAGER=/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          test -x "$SDKMANAGER" || SDKMANAGER=$(command -v sdkmanager)
+          echo "sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
+          for i in 1 2 3; do
+            "$SDKMANAGER" "ndk;27.0.12077973" && break
+            echo "NDK download failed (attempt $i), retrying..."
+            rm -rf "$ANDROID_HOME/.temp" 2>/dev/null || true
+            sleep 5
+          done
+          test -d "$ANDROID_HOME/ndk/27.0.12077973" && echo "NDK 27.0.12077973 installed OK" || { echo "NDK install FAILED"; exit 1; }
+
+      # 恢复或生成 release 签名密钥：
+      # - 若配置了 secrets.KEYSTORE（base64 的 jks），使用固定密钥（推荐，可覆盖升级）
+      # - 否则生成临时密钥（每次构建签名不同，仅适合测试分发）
+      - name: Restore or generate release keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEYSTORE_KEY_ALIAS }}
+        run: |
+          PASS="${KEYSTORE_PASSWORD:-xlist-ci-2026}"
+          ALIAS="${KEY_ALIAS:-xlist}"
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release-key.jks"
+            echo "restored keystore from secrets (alias: $ALIAS)"
+          else
+            keytool -genkey -v \
+              -keystore "$RUNNER_TEMP/release-key.jks" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias "$ALIAS" -storepass "$PASS" -keypass "$PASS" \
+              -dname "CN=CloudX, OU=Dev, O=CloudX, L=City, S=State, C=CN" 2>/dev/null
+            echo "generated temporary keystore (alias: $ALIAS)"
+          fi
+          # 注意：Flutter 项目 Gradle rootProject 是 android/ 目录，
+          # keystore.properties 必须生成到 android/ 下才能被 build.gradle.kts 读到
+          cat > android/keystore.properties <<EOF
+          storeFile=$RUNNER_TEMP/release-key.jks
+          storePassword=$PASS
+          keyAlias=$ALIAS
+          keyPassword=$PASS
+          EOF
+
+      # 构建正式版 APK（release，已签名；仅 arm64 主流 ABI 以适配免费 runner 速度）
+      - name: Build release APK
+        run: flutter build apk --release --target-platform android-arm64
+
+      # 构建调试版 APK（debug，仅 arm64）
+      - name: Build debug APK
+        run: flutter build apk --debug --target-platform android-arm64
+
+
+      # 上传两个 APK 作为 workflow artifact（可在 Actions 页面直接下载）
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudx-apks-${{ env.NEW_TAG }}
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+      # 从最近一次提交信息生成发布说明（修复了什么/做了什么）
+      - name: Generate release notes
+        run: |
+          {
+            echo "## CloudX 自动构建发布"
+            echo ""
+            echo "### 本次更新内容"
+            echo ""
+            git log -1 --pretty=format:"%s"
+            echo ""
+            echo ""
+            echo "---"
+            echo "来源提交：\`${{ github.sha }}\`"
+            echo "构建时间：${{ github.event.head_commit.timestamp }}"
+          } > release_notes.md
+
+      # 创建 GitHub Release 并同时挂载两个 APK
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.NEW_TAG }}
+          name: Release ${{ env.NEW_TAG }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
+          fail_on_unmatched_files: false

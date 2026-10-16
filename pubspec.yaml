@@ -1,0 +1,113 @@
+name: xlist
+description: Xlist project.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.2 <4.0.0'
+  flutter: '>=3.32.5'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  video_player: ^2.14.0
+  video_player_web: ^2.4.0
+  video_player_android: ^2.12.2
+  video_player_avfoundation: ^2.12.0
+
+  get: ^4.7.3
+  get_storage: ^2.1.1
+  dio: ^5.11.1
+  path: ^1.9.1
+  floor: ^1.5.0
+  jiffy: ^6.4.5
+  crypto: ^3.0.7
+  encrypt: ^5.0.3
+  keframe: ^3.0.0
+  charset: ^2.0.1
+  wakelock_plus: ^1.5.2
+  audio_wave: ^0.1.5
+  share_plus: ^12.0.1
+  open_filex: ^4.7.0
+  photo_view: ^0.15.0
+  file_picker: ^10.3.10
+  url_launcher: ^6.3.2
+  image_picker: ^1.2.3
+  easy_refresh: ^3.5.1
+  infinite_scroll_pagination: ^4.1.0
+  toggle_switch: ^2.3.0
+  vivysub_utils: ^0.0.7
+  path_provider: ^2.1.6
+  in_app_review: ^2.0.12
+  audio_service: ^0.18.19
+  code_text_field: ^1.1.0
+  adaptive_dialog: ^2.8.3
+  dismissible_page: ^1.0.2
+  pull_down_button: ^0.10.2
+  device_info_plus: ^12.4.0
+  flex_color_scheme: ^8.4.0
+  package_info_plus: ^9.0.1
+  permission_handler: ^13.0.2
+  modal_bottom_sheet: ^3.0.0
+  image_gallery_saver_plus: ^5.1.1
+  font_awesome_flutter: ^11.0.0
+  cached_network_image: ^4.0.4
+  flutter_cache_manager: ^3.3.1
+  async: ^2.11.0
+  subtitle_wrapper_package: ^2.2.0
+  syncfusion_flutter_pdfviewer: ^32.1.25
+  flutter_svg: ^2.3.0
+  flutter_phoenix: ^1.1.1
+  flutter_slidable: ^4.0.3
+  flutter_screenutil: ^5.9.3
+  flutter_smart_dialog: ^5.3.0
+  flutter_inappwebview: ^6.1.5
+  flutter_native_splash: ^2.4.8
+  flutter_keyboard_visibility: ^7.0.1
+  json_annotation: ^4.9.0
+  xml: ^6.6.1
+  flutter_downloader: ^1.12.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_gen: ^5.9.0
+  flutter_lints: ^6.0.0
+  floor_generator: ^1.5.0
+  flutter_launcher_icons: ^0.14.4
+  change_app_package_name: ^1.5.0
+  build_runner: ^2.4.13
+  json_serializable: ^6.8.0
+
+flutter_native_splash:
+  color: "#FFFFFF"
+  color_dark: "#121212"
+  image: assets/common/logo-transparent.png
+  android_12:
+    color: "#FFFFFF"
+    color_dark: "#121212"
+    image: assets/common/logo-transparent.png
+
+flutter_app_name:
+  name: "CloudX"
+
+flutter_gen:
+  output: lib/gen/
+  line_length: 80
+
+flutter_icons:
+  web:
+    generate: true
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/common/logo.jpg"
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+    - assets/common/
+    - assets/images/

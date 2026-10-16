@@ -1,0 +1,333 @@
+import 'dart:io';
+import 'package:get/get.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'package:xlist/common/index.dart';
+import 'package:xlist/storages/index.dart';
+import 'package:xlist/routes/app_pages.dart';
+import 'package:xlist/pages/setting/index.dart';
+import 'package:xlist/pages/homepage/index.dart';
+import 'package:xlist/services/index.dart';
+
+class SettingPage extends GetView<SettingController> {
+  const SettingPage({Key? key}) : super(key: key);
+
+  // NavigationBar
+  CupertinoNavigationBar _buildNavigationBar() {
+    return CupertinoNavigationBar(
+      backgroundColor: CommonUtils.backgroundColor,
+      border: Border.all(width: 0, color: Colors.transparent),
+      leading: CupertinoButton(
+        padding: EdgeInsets.zero,
+        alignment: Alignment.centerLeft,
+        child: Icon(FontAwesomeIcons.xmark.data, size: CommonUtils.navIconSize),
+        onPressed: () => Get.back(),
+      ),
+      middle: Text('setting'.tr),
+      trailing: CupertinoButton(
+        padding: EdgeInsets.zero,
+        child: Icon(CupertinoIcons.download_circle),
+        onPressed: () => Get.toNamed(Routes.SETTING_DOWNLOAD),
+      ),
+    );
+  }
+
+  /// ListTile
+  /// [title] 标题
+  /// [icon] 图标
+  /// [onTap] 点击事件
+  /// [additionalInfo] 附加信息
+  Widget _buildListTile({
+    required String title,
+    required IconData icon,
+    double? iconSize,
+    Color? iconColor,
+    Function()? onTap,
+    Widget trailing = const CupertinoListTileChevron(),
+    String additionalInfo = '',
+  }) {
+    return CupertinoListTile(
+      title: Row(
+        children: [
+          Text(title, style: Get.textTheme.bodyLarge),
+          SizedBox(width: 10),
+        ],
+      ),
+      padding: EdgeInsets.only(left: 15, right: 10),
+      leading: Icon(
+        icon,
+        size: iconSize ?? CommonUtils.navIconSize,
+        color: iconColor ?? Get.theme.primaryColor,
+      ),
+      leadingToTitle: 5,
+      additionalInfo: additionalInfo.isEmpty
+          ? SizedBox()
+          : Container(
+              width: 400.w,
+              alignment: Alignment.centerRight,
+              child: Text(
+                additionalInfo,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Get.textTheme.bodyLarge?.copyWith(color: Colors.grey),
+              ),
+            ),
+      onTap: onTap,
+      trailing: trailing,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 通用高级功能列表项
+    final favorite = [
+      _buildListTile(
+        title: 'favorite'.tr,
+        icon: Icons.star_rounded,
+        onTap: () => Get.toNamed(Routes.SETTING_FAVORITE),
+      ),
+    ];
+
+    final recent = [
+      _buildListTile(
+        title: 'recent'.tr,
+        icon: Icons.history_rounded,
+        onTap: () => Get.toNamed(Routes.SETTING_RECENT),
+      ),
+    ];
+
+    final mediaPreview = [
+      _buildListTile(
+        title: 'setting_preview_image'.tr,
+        icon: Icons.perm_media_rounded,
+        trailing: Obx(
+          () => CupertinoSwitch(
+            value: controller.isShowPreview.value,
+            onChanged: (value) {
+              controller.isShowPreview.value = value;
+              Get.find<PreferencesStorage>().isShowPreview.val = value;
+              Get.find<HomepageController>().isShowPreview.value = value;
+            },
+          ),
+        ),
+      ),
+    ];
+
+    return CupertinoPageScaffold(
+      navigationBar: _buildNavigationBar(),
+      backgroundColor: CommonUtils.backgroundColor,
+      child: Container(
+        height: Get.height,
+        padding: EdgeInsets.only(bottom: 20.h),
+        child: SingleChildScrollView(
+          physics: AlwaysScrollableScrollPhysics(),
+          child: Column(
+            children: [
+              Obx(
+                () => CupertinoListSection.insetGrouped(
+                  backgroundColor: CommonUtils.backgroundColor,
+                  dividerMargin: 20,
+                  additionalDividerMargin: 30,
+                  header: Container(
+                    padding: EdgeInsets.only(left: 15),
+                    alignment: Alignment.centerLeft,
+                    child: Text('general'.tr, style: Get.textTheme.bodySmall),
+                  ),
+                  children: [
+                    _buildListTile(
+                      title: 'server'.tr,
+                      icon: Icons.cloud,
+                      additionalInfo: controller.serverInfo.value.username,
+                      onTap: () => Get.toNamed(Routes.SETTING_SERVER),
+                    ),
+                    _buildListTile(
+                      title: '忽略 SSL 证书校验',
+                      icon: Icons.enhanced_encryption_outlined,
+                      trailing: Obx(
+                        () => CupertinoSwitch(
+                          value: controller.ignoreSslVerify.value,
+                          onChanged: (value) {
+                            controller.updateSetting('ignoreSslVerify', value);
+                            SmartDialog.showToast(
+                                value ? '已开启：忽略服务器证书校验' : '已关闭：严格校验证书');
+                          },
+                        ),
+                      ),
+                    ),
+                    _buildListTile(
+                      title: 'setting_theme'.tr,
+                      icon: Icons.color_lens,
+                      additionalInfo: controller.themeModeText.value,
+                      onTap: () => controller.changeTheme(),
+                    ),
+                    ...favorite,
+                    ...recent,
+                    _buildListTile(
+                      title: 'download_manager'.tr,
+                      icon: Icons.download_rounded,
+                      onTap: () => Get.toNamed(Routes.SETTING_DOWNLOAD),
+                    ),
+                  ],
+                ),
+              ),
+              CupertinoListSection.insetGrouped(
+                backgroundColor: CommonUtils.backgroundColor,
+                dividerMargin: 20,
+                additionalDividerMargin: 30,
+                header: Container(
+                  padding: EdgeInsets.only(left: 15),
+                  alignment: Alignment.centerLeft,
+                  child: Text('preview'.tr, style: Get.textTheme.bodySmall),
+                ),
+                children: [
+                  _buildListTile(
+                    title: 'document'.tr,
+                    icon: Icons.description_rounded,
+                    onTap: () => Get.toNamed(Routes.SETTING_PREVIEW_DOCUMENT),
+                  ),
+                  _buildListTile(
+                    title: 'image'.tr,
+                    icon: Icons.image_rounded,
+                    onTap: () => Get.toNamed(Routes.SETTING_PREVIEW_IMAGE),
+                  ),
+                  _buildListTile(
+                    title: 'video'.tr,
+                    icon: Icons.video_collection_rounded,
+                    onTap: () => Get.toNamed(Routes.SETTING_PREVIEW_VIDEO),
+                  ),
+                  _buildListTile(
+                    title: 'audio'.tr,
+                    icon: Icons.library_music,
+                    onTap: () => Get.toNamed(Routes.SETTING_PREVIEW_AUDIO),
+                  ),
+                  _buildListTile(
+                    title: 'setting_autoplay'.tr,
+                    icon: Icons.play_circle_outline_rounded,
+                    trailing: Obx(
+                      () => CupertinoSwitch(
+                        value: controller.isAutoPlay.value,
+                        onChanged: (value) {
+                          controller.isAutoPlay.value = value;
+                          Get.find<PreferencesStorage>().isAutoPlay.val = value;
+                        },
+                      ),
+                    ),
+                  ),
+                  _buildListTile(
+                    title: 'setting_hardware'.tr,
+                    icon: Icons.hardware_rounded,
+                    trailing: Obx(
+                      () => CupertinoSwitch(
+                        value: controller.isHardwareDecode.value,
+                        onChanged: (value) {
+                          controller.isHardwareDecode.value = value;
+                          Get.find<PreferencesStorage>().isHardwareDecode.val =
+                              value;
+                        },
+                      ),
+                    ),
+                  ),
+                  ...mediaPreview,
+                  _buildListTile(
+                    title: 'setting_background_playback'.tr,
+                    icon: Icons.personal_video_rounded,
+                    trailing: Obx(
+                      () => CupertinoSwitch(
+                        value: controller.isBackgroundPlay.value,
+                        onChanged: (value) {
+                          controller.isBackgroundPlay.value = value;
+                          Get.find<PreferencesStorage>().isBackgroundPlay.val =
+                              value;
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              CupertinoListSection.insetGrouped(
+                backgroundColor: CommonUtils.backgroundColor,
+                dividerMargin: 20,
+                additionalDividerMargin: 30,
+                header: Container(
+                  padding: EdgeInsets.only(left: 15),
+                  alignment: Alignment.centerLeft,
+                  child: Text('缓存', style: Get.textTheme.bodySmall),
+                ),
+                children: [
+                  _buildListTile(
+                    title: '清除缩略图缓存',
+                    icon: Icons.delete_rounded,
+                    onTap: () async {
+                      try {
+                        SmartDialog.showLoading();
+                        // 计算清除前的缓存大小
+                        final beforeSize = await ThumbnailCache().getCacheSize();
+                        await ThumbnailCache().clearCache();
+                        SmartDialog.dismiss();
+                        // 格式化大小显示
+                        final sizeText = CommonUtils.formatFileSize(beforeSize);
+                        Get.snackbar('成功', '已清除缩略图缓存 $sizeText');
+                      } catch (e) {
+                        SmartDialog.dismiss();
+                        Get.snackbar('错误', '清除缓存失败: $e');
+                      }
+                    },
+                  ),
+                  _buildListTile(
+                    title: '清除文件缓存',
+                    icon: Icons.delete_rounded,
+                    onTap: () async {
+                      try {
+                        SmartDialog.showLoading();
+                        // 统计所有文件缓存大小（缩略图缓存 + 网络图片缓存）
+                        int beforeSize = 0;
+                        try {
+                          beforeSize += await ThumbnailCache().getCacheSize();
+                        } catch (_) {}
+                        try {
+                          final tempDir = await getTemporaryDirectory();
+                          final cacheDir = Directory(
+                              p.join(tempDir.path, 'libCachedImageData'));
+                          if (await cacheDir.exists()) {
+                            await for (final f in cacheDir.list(recursive: true)) {
+                              if (f is File) {
+                                try {
+                                  beforeSize += await f.length();
+                                } catch (_) {}
+                              }
+                            }
+                          }
+                        } catch (_) {}
+                        // 全局清除所有文件缓存：缩略图 + 网络图片（视频/图片/缩略图共用）
+                        try {
+                          await ThumbnailCache().clearCache();
+                        } catch (_) {}
+                        await DefaultCacheManager().emptyCache();
+                        SmartDialog.dismiss();
+                        // 提示词与入口标题一致
+                        Get.snackbar('成功',
+                            '已清除文件缓存 ${CommonUtils.formatFileSize(beforeSize)}');
+                      } catch (e) {
+                        SmartDialog.dismiss();
+                        Get.snackbar('错误', '清除缓存失败: $e');
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

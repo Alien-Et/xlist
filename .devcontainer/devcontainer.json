@@ -1,0 +1,26 @@
+{
+	"name": "Flutter",
+	"image": "mcr.microsoft.com/devcontainers/flutter:0",
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"Dart-Code.dart-code",
+				"Dart-Code.flutter",
+				"ms-python.python",
+				"ms-azuretools.vscode-docker",
+				"eamodio.gitlens",
+				"esbenp.prettier-vscode",
+				"rebornix.ruby",
+				"bmewburn.vscode-intelephense-client",
+				"ms-dotnettools.csharp"
+			]
+		}
+	},
+
+	"forwardPorts": [9000],
+
+	"postCreateCommand": "sudo apt-get update && sudo apt-get install -y openjdk-11-jdk android-sdk nodejs npm python3 golang ruby-full php-cli dotnet-sdk-8.0 && flutter precache && flutter pub get",
+
+	"remoteUser": "vscode"
+}

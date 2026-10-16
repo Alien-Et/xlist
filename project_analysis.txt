@@ -1,0 +1,52 @@
+# 项目实现逻辑分析
+
+## 1. 项目结构
+- **lib/global.dart**: 应用程序初始化逻辑
+- **lib/services/core_service.dart**: 核心服务，包含WebDAV功能
+- **lib/services/database_service.dart**: 数据库服务
+- **lib/services/dio_service.dart**: 网络请求服务
+- **lib/pages/homepage/**: 主页相关代码
+- **lib/pages/setting/**: 设置页面相关代码
+- **lib/models/**: 数据模型
+- **lib/database/**: 数据库相关代码
+
+## 2. 主要功能
+### 2.1 WebDAV文件管理
+- 从WebDAV服务器获取文件列表
+- 支持文件下载
+- 支持服务器管理（添加、编辑、删除）
+
+### 2.2 服务器管理
+- 服务器配置存储
+- 上次使用服务器记忆
+
+### 2.3 其他功能
+- 收藏文件
+- 最近访问文件
+- 下载管理
+
+## 3. 当前问题
+1. **主页显示问题**: 即使配置了服务器，主页依然显示"目录为空"
+2. **背景图片问题**: 未登录服务器时的背景图片没有显示
+3. **WebDAV文件获取问题**: 无法正确获取和显示WebDAV文件列表
+
+## 4. 核心代码分析
+### 4.1 CoreService.getWebDAVFiles()
+- 实现了WebDAV PROPFIND请求
+- 解析WebDAV响应
+- 返回文件列表
+
+### 4.2 HomepageController.getObjectList()
+- 调用CoreService.getWebDAVFiles()获取文件列表
+- 更新UI显示
+
+### 4.3 服务器加载逻辑
+- loadRecentServer()方法加载最近使用的服务器
+- 优先使用用户上次使用的服务器
+
+## 5. 重构计划
+1. **修复服务器加载逻辑**: 确保服务器配置正确加载
+2. **修复WebDAV文件获取逻辑**: 确保正确获取和解析WebDAV文件列表
+3. **修复UI显示逻辑**: 确保正确显示服务器状态和文件列表
+4. **添加错误处理**: 增强错误处理和用户提示
+5. **优化代码结构**: 提高代码可读性和可维护性
