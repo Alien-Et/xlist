@@ -9,7 +9,6 @@ import 'package:vivysub_utils/vivysub_utils.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:subtitle_wrapper_package/data/models/subtitle.dart';
-import 'package:get_storage/get_storage.dart'; // 导入 GetStorage 以使用 val 扩展方法
 
 import 'package:xlist/models/index.dart';
 import 'package:xlist/models/user.dart'; // 导入 UserModel

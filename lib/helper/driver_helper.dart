@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:xlist/constants/index.dart';
-import 'package:xlist/storages/index.dart';
 import 'package:xlist/services/index.dart';
 
 class DriverHelper {

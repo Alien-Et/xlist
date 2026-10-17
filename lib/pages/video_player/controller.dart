@@ -1,11 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:path/path.dart' as p;
-import 'package:charset/charset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -14,9 +12,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:subtitle_wrapper_package/subtitle_wrapper_package.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 
-import 'package:xlist/gen/index.dart';
 import 'package:xlist/helper/index.dart';
 import 'package:xlist/models/index.dart';
 import 'package:xlist/common/utils.dart';
@@ -637,7 +633,7 @@ class VideoPlayerController extends SuperController with WidgetsBindingObserver 
       ],
       cancelLabel: 'cancel'.tr,
     );
-    if (value != null && value is int && value != currentIndex.value) {
+    if (value is int && value != currentIndex.value) {
       changePlaylist(value);
     }
   }

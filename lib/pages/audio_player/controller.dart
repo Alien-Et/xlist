@@ -17,7 +17,6 @@ import 'package:xlist/storages/index.dart';
 import 'package:xlist/services/index.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/repositorys/index.dart';
-import 'package:xlist/repositorys/user_repository.dart';
 import 'package:xlist/database/entity/index.dart';
 
 class AudioPlayerController extends GetxController
@@ -208,7 +207,7 @@ class AudioPlayerController extends GetxController
 
     // 播放预加载完成
     if (value.isInitialized && !value.hasError) { // 替换 FijkState.prepared
-      if (value.duration != null && value.duration!.inMilliseconds > 0) _playerNotificationHandler();
+      if (value.duration != null && value.duration.inMilliseconds > 0) _playerNotificationHandler();
     }
 
     // 播放完成

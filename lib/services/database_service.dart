@@ -163,23 +163,6 @@ class DatabaseService extends GetxService {
   // 检查数据库是否初始化
   bool get isDatabaseInitialized => _isInitialized.value;
 
-  // 获取大小
-  Future<int> getSize() async {
-    try {
-      final path = await sqfliteDatabaseFactory.getDatabasePath(name);
-      final file = File(path);
-      if (file.existsSync()) {
-        return file.length();
-      } else {
-        Logger.w('Database file not found at: $path');
-        return 0;
-      }
-    } catch (e) {
-      Logger.w('Error getting database size: $e');
-      return 0;
-    }
-  }
-
   // 关闭数据库
   Future<void> close() async {
     try {

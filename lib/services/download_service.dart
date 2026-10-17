@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'dart:isolate';
 
 import 'package:get/get.dart';
-import 'package:flutter/foundation.dart';
 const port = 'downloader_port';
 
 typedef DownloadIsolateCallback = void Function(

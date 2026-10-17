@@ -368,7 +368,7 @@ class ObjectHelper {
   /// 显示文件属性
   /// [object] 文件对象
   static Future<void> showFileProperties(ObjectModel object) async {
-    final sizeText = object.isDir! ? '文件夹' : CommonUtils.formatFileSize(object.size!);
+    final sizeText = object.isDir! ? '文件夹' : CommonUtils.formatFileSize(object.size ?? 0);
     final typeText = object.isDir! ? '目录' : '文件';
     final modifiedText = object.modified != null 
         ? Jiffy.parseFromDateTime(object.modified!).format(pattern: 'yyyy/MM/dd HH:mm:ss') 

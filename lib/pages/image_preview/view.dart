@@ -10,44 +10,10 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:xlist/pages/image_preview/index.dart';
-import 'package:xlist/services/index.dart';
 
 class ImagePreviewPage extends GetView<ImagePreviewController> {
   ImagePreviewPage({Key? key}) : super(key: key);
   late final _thumbnailPaths = RxList<String?>([]);
-  final _isInitialized = false.obs;
-
-  void _preloadThumbnails() async {
-    if (_isInitialized.value) return;
-    _isInitialized.value = true;
-
-    // 只预取当前页 ±2 张：避免一次性串行下载全部原图副本导致打开慢
-    // （全部图片仍由 CachedNetworkImage 渐进加载）
-    if (controller.imageUrls.isEmpty) return;
-    final center = controller.currentIndex.value;
-    final start = (center - 2).clamp(0, controller.imageUrls.length - 1);
-    final end =
-        (center + 2).clamp(0, controller.imageUrls.length - 1).toInt();
-    for (var i = start; i <= end; i++) {
-      final url = controller.imageUrls[i];
-      try {
-        final path = await ThumbnailCache().getThumbnail(
-          url: url,
-          headers: controller.imageHeaders,
-          isVideo: false,
-        );
-        if (path != null) {
-          // 确保索引对齐（未预取的索引用 null 占位）
-          while (_thumbnailPaths.length <= i) {
-            _thumbnailPaths.add(null);
-          }
-          _thumbnailPaths[i] = path!;
-        }
-      } catch (e) {
-        print('Error preloading thumbnail for $url: $e');
-      }
-    }
-  }
 
   /// 页面指示器
   Widget _buildExtendedPageIndicator() {

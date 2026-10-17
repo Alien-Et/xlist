@@ -9,7 +9,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:xlist/components/connection_error_view.dart';
 import 'package:xlist/gen/index.dart';
-import 'package:xlist/helper/index.dart';
 import 'package:xlist/common/index.dart';
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/pages/audio_player/index.dart';

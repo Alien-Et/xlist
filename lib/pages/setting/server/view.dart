@@ -8,9 +8,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'package:xlist/gen/index.dart';
 import 'package:xlist/common/index.dart';
-import 'package:xlist/storages/index.dart';
-import 'package:xlist/pages/setting/index.dart';
-import 'package:xlist/pages/homepage/index.dart';
 import 'package:xlist/database/entity/index.dart';
 import 'package:xlist/helper/bottom_sheet_helper.dart';
 import 'package:xlist/pages/setting/server/index.dart';

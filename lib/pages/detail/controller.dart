@@ -1,7 +1,6 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:easy_refresh/easy_refresh.dart';
-import 'package:adaptive_dialog/adaptive_dialog.dart';
 
 import 'package:xlist/common/index.dart';
 import 'package:xlist/models/index.dart';
@@ -9,7 +8,6 @@ import 'package:xlist/constants/common.dart'; // 导入 LayoutType
 import 'package:xlist/services/core_service.dart';
 import 'package:xlist/services/index.dart';
 import 'package:xlist/storages/index.dart';
-import 'package:xlist/database/entity/index.dart';
 
 class DetailController extends GetxController {
   final userInfo = UserModel().obs; // 用户信息

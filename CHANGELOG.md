@@ -3,6 +3,16 @@
 > 每次修复功能后的记录（最新在上）。版本号对应 GitHub Release tag。
 
 ## 未发布（当前开发中，v4 批次）
+- **自检自修（本轮）**：
+  - 修复潜在崩溃点：文件属性页 `object.size!` 在 size 为 null 时崩溃 → 改 `object.size ?? 0`（与列表显示逻辑一致）
+  - 清理 6 处死变量（homepage 各操作 action 中残留的 `objects` 声明、document navigationBarHeight）
+  - 清理 40 条 unused import（全库）
+  - 删除 4 个死方法（零引用确认后）：homepage `_batchAction`、image_preview `_preloadThumbnails`、core_service `_tryAlistApi`（旧 Alist REST 探测）、database_service `getSize`（无调用方，缓存统计走 ThumbnailCache.getCacheSize）
+  - 清理 audio_player/video_player 冗余非空断言与 null 检查（promotion 后）
+  - 删除 image_preview 死字段 `_isInitialized`
+  - analyze 存量 warning 603 → 547，0 error
+
+
 - **修复 HTTP 明文流量被 Android 禁止（cleartext）**：视频播放报 `Cleartext HTTP traffic to 127.0.0.1 not permitted`、图片解码失败（下载到错误内容导致解码 unimplemented）——根因是 http 服务器（含本地代理）请求被 Android 9+ 默认拦截。主 Manifest 增加 `android:usesCleartextTraffic="true"`，http/https 服务器均可正常播放与加载
 - **修复 AudioService not found（音频播放/后台通知）**：audio_service 插件的 AudioService/MediaButtonReceiver 未在 Manifest 注册（日志 `Unable to start service ... AudioService not found`），已补齐 service/receiver 注册 + FOREGROUND_SERVICE、FOREGROUND_SERVICE_MEDIA_PLAYBACK 权限
 - 构建 debug APK 验证通过（analyze 0 error）

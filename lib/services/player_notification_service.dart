@@ -7,7 +7,6 @@ import 'package:video_player/video_player.dart' as vp;
 
 import 'package:xlist/constants/index.dart';
 import 'package:xlist/pages/audio_player/index.dart';
-import 'package:xlist/pages/video_player/index.dart';
 
 // PlayerNotificationService https://pub.dev/packages/audio_service
 class PlayerNotificationService extends GetxService {

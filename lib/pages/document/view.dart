@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:code_text_field/code_text_field.dart';
-import 'package:pull_down_button/pull_down_button.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:flutter_highlight/themes/atom-one-dark.dart';
@@ -108,11 +107,6 @@ class DocumentPage extends GetView<DocumentController> {
         controller.layoutMode.value == DocumentLayoutMode.fullscreen;
     final contentPadding =
         isFullscreen ? EdgeInsets.zero : EdgeInsets.all(16.w);
-    final navigationBarHeight = isFullscreen
-        ? 0
-        : kMinInteractiveDimensionCupertino +
-            MediaQuery.of(Get.context!).padding.top;
-
     // 代码类型
     if (PreviewHelper.isCode(controller.name) &&
         !PreviewHelper.isHtml(controller.name) &&

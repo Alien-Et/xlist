@@ -6,8 +6,6 @@ import 'package:xml/xml.dart';
 import 'package:xlist/common/index.dart';
 import 'package:xlist/models/index.dart';
 import 'package:xlist/services/index.dart';
-import 'package:xlist/storages/index.dart';
-import 'package:xlist/pages/homepage/index.dart';
 
 class ObjectRepository extends Repository {
   ObjectRepository();

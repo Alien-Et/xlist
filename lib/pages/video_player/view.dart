@@ -1,20 +1,11 @@
-import 'dart:io';
 
 import 'package:get/get.dart';
-import 'package:jiffy/jiffy.dart';
-import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:video_player/video_player.dart' as vp;
-import 'package:audio_wave/audio_wave.dart';
-import 'package:toggle_switch/toggle_switch.dart';
 import 'package:pull_down_button/pull_down_button.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:xlist/components/connection_error_view.dart';
-import 'package:xlist/gen/index.dart';
-import 'package:xlist/helper/index.dart';
 import 'package:xlist/common/index.dart';
 import 'package:xlist/pages/video_player/index.dart';
 import 'package:xlist/routes/app_pages.dart';

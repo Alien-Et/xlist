@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:adaptive_dialog/adaptive_dialog.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 
 import 'package:xlist/common/index.dart';
@@ -353,13 +352,11 @@ class Homepage extends GetView<HomepageController> {
       SmartDialog.showToast('请仅选择一个文件查看属性');
       return;
     }
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     _exitSelect();
     ObjectHelper.showFileProperties(obj);
   }
 
   void _actionDownload() {
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     final obj = _single();
     if (obj == null) {
       controller.batchDownload();
@@ -375,7 +372,6 @@ class Homepage extends GetView<HomepageController> {
   }
 
   void _actionMove() {
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     final obj = _single();
     if (obj == null) {
       controller.batchMoveOrCopy(isCopy: false);
@@ -394,7 +390,6 @@ class Homepage extends GetView<HomepageController> {
   }
 
   void _actionCopy() {
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     final obj = _single();
     if (obj == null) {
       controller.batchMoveOrCopy(isCopy: true);
@@ -413,7 +408,6 @@ class Homepage extends GetView<HomepageController> {
   }
 
   void _actionDelete() {
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     final obj = _single();
     if (obj == null) {
       controller.batchDelete();
@@ -434,7 +428,6 @@ class Homepage extends GetView<HomepageController> {
       SmartDialog.showToast('请仅选择一个文件重命名');
       return;
     }
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     _exitSelect();
     ObjectHelper.rename(
       path: controller.currentPath.value,
@@ -450,7 +443,6 @@ class Homepage extends GetView<HomepageController> {
       SmartDialog.showToast('请仅选择一个文件复制链接');
       return;
     }
-    final objects = List<ObjectModel>.from(controller.selectedObjects);
     _exitSelect();
     final userInfo =
         Get.find<CoreService>().currentUser.value ?? UserModel();
@@ -462,29 +454,6 @@ class Homepage extends GetView<HomepageController> {
   }
 
   /// 单个批量操作按钮
-  Widget _batchAction(
-    IconData icon,
-    Widget label,
-    VoidCallback onTap,
-  ) {
-    final isNarrow = Get.width < 400;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: CommonUtils.isPad ? 48 : (isNarrow ? 52.sp : 70.sp),
-            color: Get.theme.primaryColor,
-          ),
-          SizedBox(height: 8.h),
-          label,
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
